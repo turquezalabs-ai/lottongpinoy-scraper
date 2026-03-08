@@ -9,26 +9,11 @@ puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
-const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
-const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
+const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json'; // Your live site
+const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const GAMES = [
-    { id: '18', name: 'Ultra Lotto 6/58' },
-    { id: '17', name: 'Grand Lotto 6/55' },
-    { id: '1',  name: 'Super Lotto 6/49' },
-    { id: '2',  name: 'Mega Lotto 6/45' },
-    { id: '13', name: 'Lotto 6/42' },
-    { id: '5',  name: '6D Lotto' },
-    { id: '6',  name: '4D Lotto' },
-    { id: '8',  name: '3D Lotto 11AM' },
-    { id: '9',  name: '3D Lotto 4PM' },
-    { id: '10', name: '3D Lotto 9PM' },
-    { id: '15', name: '2D Lotto 11AM' },
-    { id: '16', name: '2D Lotto 4PM' },
-    { id: '11', name: '2D Lotto 9PM' }
-];
-
+// Helper: Download existing data
 async function fetchExistingData(url) {
     return new Promise((resolve) => {
         https.get(url, (res) => {
@@ -43,10 +28,14 @@ async function fetchExistingData(url) {
 }
 
 (async () => {
-    console.log("🚀 Starting Official PCSO Scraper...");
+    console.log("⚡ REAL-TIME SCRAPER STARTED");
     
+    // 1. Load existing data
     let currentData = await fetchExistingData(LIVE_DATA_URL);
     console.log(`💾 Loaded ${currentData.length} existing entries.`);
+
+    // 2. Prepare output folder
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     const browser = await puppeteer.launch({ 
         headless: 'new',
@@ -56,81 +45,82 @@ async function fetchExistingData(url) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1366, height: 768 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.setDefaultTimeout(60000);
+    
+    let newCount = 0;
 
     try {
-        console.log("🌐 Navigating to PCSO...");
-        await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded' });
-
-        const now = new Date();
-        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        console.log(`🌐 Navigating to ${TARGET_URL}`);
         
-        // LAST 3 DAYS LOGIC
-        const toMonth = months[now.getMonth()];
-        const toYear = now.getFullYear().toString();
-        const toDay = now.getDate().toString();
+        // Go to site, wait for content
+        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await wait(3000); // Wait for results to render
 
-        const past = new Date();
-        past.setDate(past.getDate() - 3);
-        const fromMonth = months[past.getMonth()];
-        const fromYear = past.getFullYear().toString();
-        const fromDay = past.getDate().toString();
+        // 3. Extract Data from Text
+        const results = await page.evaluate(() => {
+            const items = [];
+            // Get all text from the body
+            const text = document.body.innerText;
 
-        console.log(`📅 Range: ${fromMonth} ${fromDay} TO ${toMonth} ${toDay}`);
-
-        let newCount = 0;
-
-        for (const game of GAMES) {
-            console.log(`🔍 ${game.name}...`);
-
-            try {
-                await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
-                await page.select('#cphContainer_cpContent_ddlStartYear', fromYear);
-                await page.select('#cphContainer_cpContent_ddlStartDate', fromDay);
-                await page.select('#cphContainer_cpContent_ddlEndMonth', toMonth);
-                await page.select('#cphContainer_cpContent_ddlEndYear', toYear);
-                await page.select('#cphContainer_cpContent_ddlEndDay', toDay);
-
-                await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
-                await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
-                await wait(3000);
-
-                const results = await page.evaluate((correctName) => {
-                    const items = [];
-                    const table = document.querySelector('#cphContainer_cpContent_GridView1');
-                    if (!table) return items;
-                    
-                    table.querySelectorAll('tr').forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length >= 5) {
-                            const game = correctName;
-                            const combo = cells[1].innerText.trim();
-                            const dateStr = cells[2].innerText.trim();
-                            const prize = cells[3].innerText.trim();
-                            const winners = cells[4].innerText.trim();
-
-                            let dateFormatted = dateStr;
-                            const parts = dateStr.split('/');
-                            if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-
-                            items.push({ date: dateFormatted, game, combination: combo, prize: `₱ ${prize}`, winners });
-                        }
-                    });
-                    return items;
-                }, game.name);
-
-                results.forEach(item => {
-                    if (!currentData.some(i => i.date === item.date && i.combination === item.combination && i.game === item.game)) {
-                        currentData.push(item);
-                        newCount++;
-                    }
-                });
+            // Regex Strategy:
+            // Find "3D Lotto 11AM: 1-2-3" or "Swertres 11AM: 1-2-3"
+            // Supports 2D, 3D, 4D, 6D, and Major Games if listed
+            
+            // Pattern: (Game Name) (Time) : (Numbers)
+            // Note: Handles common aliases like Swertres/EZ2
+            const regex = /(3D|Swertres|2D|EZ2|4D|6D|Ultra Lotto|Grand Lotto|Super Lotto|Mega Lotto|Lotto)\s?(6\/58|6\/55|6\/49|6\/45|6\/42)?\s?(11AM|4PM|9PM|11:00 AM|4:00 PM|9:00 PM)?[:\s]+(\d{1,2}[-\s]\d{1,2}[-\s]\d{1,2}|\d{1,2}[-\s]\d{1,2})/gi;
+            
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                // Clean up Game Name
+                let game = match[1].replace('Swertres', '3D').replace('EZ2', '2D');
                 
-            } catch (e) {
-                console.log(`   ❌ Error: ${e.message}`);
-            }
-        }
+                // If Major game, append the division (e.g., "Ultra Lotto 6/58")
+                if(match[2]) game += ' ' + match[2];
 
+                // Standardize Game Name for Database
+                if(game === '3D') game = '3D Lotto';
+                if(game === '2D') game = '2D Lotto';
+                if(game === '4D') game = '4D Lotto';
+                if(game === '6D') game = '6D Lotto';
+
+                // Add time if found (for 2D/3D)
+                if(match[3]) {
+                    let time = match[3].replace(':00', '').replace(' ', ''); // Normalize
+                    game += ' ' + time;
+                }
+
+                let numbers = match[4].replace(/\s/g, '-'); // Normalize spaces to dashes
+                
+                items.push({
+                    game: game.trim(),
+                    combination: numbers,
+                    prize: '₱ TBA', // Not available in quick text
+                    winners: 'TBA',
+                    date: new Date().toISOString().split('T')[0] // Assume today
+                });
+            }
+            return items;
+        });
+
+        console.log(`🔍 Found ${results.length} potential results.`);
+
+        // 4. Merge & Save
+        results.forEach(item => {
+            // Check duplicates carefully
+            const exists = currentData.some(i => 
+                i.date === item.date && 
+                i.game === item.game && 
+                i.combination === item.combination
+            );
+
+            if (!exists) {
+                currentData.push(item);
+                newCount++;
+                console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
+            }
+        });
+
+        // Sort Descending
         currentData.sort((a, b) => {
             const getTs = (str) => {
                 const parts = str.split('-');
@@ -139,15 +129,15 @@ async function fetchExistingData(url) {
             return getTs(b.date) - getTs(a.date);
         });
 
-        if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        
-        if (newCount > 0) console.log(`💾 Added ${newCount} new entries.`);
-        else console.log("✅ No new updates.");
+
+        if (newCount > 0) console.log(`💾 Saved ${newCount} new entries.`);
+        else console.log("✅ No new updates found.");
 
     } catch (error) {
-        console.error("❌ Fatal Error:", error.message);
-        process.exit(1);
+        console.error("❌ Error:", error.message);
+        // Save whatever we have to ensure FTP doesn't crash
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
     }
 
     await browser.close();
