@@ -37,8 +37,9 @@ async function fetchExistingData(url) {
     // 2. Prepare output folder
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-    const browser = await puppeteer.launch({ 
+        const browser = await puppeteer.launch({ 
         headless: 'new',
+        executablePath: '/usr/bin/chromium-browser', // Use system Chrome
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
