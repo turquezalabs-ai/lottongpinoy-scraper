@@ -37,10 +37,10 @@ async function fetchExistingData(url) {
     // 2. Prepare output folder
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-        const browser = await puppeteer.launch({ 
-        headless: 'new',
-        executablePath: '/usr/bin/chromium-browser', // Use system Chrome
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+            const browser = await puppeteer.launch({ 
+        headless: true, // 'new' can sometimes be buggy on CI, 'true' is safer
+        executablePath: '/opt/google/chrome/chrome', // Path provided by browser-actions
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
     
     const page = await browser.newPage();
