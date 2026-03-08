@@ -1,8 +1,13 @@
-name: PCSO Scraper
+name: Real-Time Scraper
 
 on:
   schedule:
-    - cron: '0 15 * * *' # 11 PM Manila
+    # 2:10 PM Manila (06:10 UTC)
+    - cron: '10 6 * * *'
+    # 5:10 PM Manila (09:10 UTC)
+    - cron: '10 9 * * *'
+    # 9:10 PM Manila (13:10 UTC)
+    - cron: '10 13 * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,12 +15,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+          cache: 'npm'
 
       - name: Install Deps
         run: |
@@ -26,7 +33,7 @@ jobs:
       - name: Run Scraper
         run: node scrape.js
 
-      - name: Upload
+      - name: Upload to Live Site
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: ${{ secrets.FTP_SERVER }}
