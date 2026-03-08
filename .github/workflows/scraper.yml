@@ -2,11 +2,8 @@ name: Real-Time Scraper
 
 on:
   schedule:
-    # 2:10 PM Manila (06:10 UTC)
     - cron: '10 6 * * *'
-    # 5:10 PM Manila (09:10 UTC)
     - cron: '10 9 * * *'
-    # 9:10 PM Manila (13:10 UTC)
     - cron: '10 13 * * *'
   workflow_dispatch:
 
@@ -22,7 +19,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
+          # REMOVED cache: 'npm' to fix the error
 
       - name: Install Deps
         run: |
