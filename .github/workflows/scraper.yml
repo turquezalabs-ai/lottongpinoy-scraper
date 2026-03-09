@@ -20,7 +20,6 @@ jobs:
         with:
           node-version: '18'
 
-      # STEP 1: Install Chrome via Official Action (Fast & Reliable)
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@v1
         with:
@@ -30,15 +29,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libatspi2.0-0 libxshmfence1
-          # Skip Puppeteer download since we use system Chrome
           PUPPETEER_SKIP_DOWNLOAD=true npm install
 
       - name: Run Scraper
         run: node scrape.js
-      - name: Run Scraper
-        run: node scrape.js
 
-      # NEW STEP: Save progress to GitHub Repo
+      # NEW STEP: Save progress to GitHub Repo (The "Sync")
       - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
@@ -50,8 +46,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload to Live Site
-        # ...
-      - name: Upload to Live Site
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -59,5 +53,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps  # <--- CRITICAL FIX: Forces secure connection
+          protocol: ftps
           security: loose
