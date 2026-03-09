@@ -3,25 +3,20 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 
 puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
-const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
 const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-
 (async () => {
-        console.log("⚡ REAL-TIME SCRAPER STARTED");
+    console.log("⚡ REAL-TIME SCRAPER STARTED");
     
-    // SWITCH: Read from Local Repo instead of Live URL
-    // This avoids the Hostinger Firewall Timeout issue.
+    // 1. Read from Local Repo (Avoids Hostinger Timeout)
     let currentData = [];
     
-    // Ensure folder exists
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     if (fs.existsSync(OUTPUT_FILE)) {
@@ -39,13 +34,8 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     const initialCount = currentData.length;
 
-    // --- FAILSAFE ---
-    if (initialCount === 0) {
-        console.error("❌ FAILSAFE: No data loaded after retries. Aborting workflow.");
-        process.exit(1); // KILLS THE JOB. Prevents FTP step from running.
-    }
-
-    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+    // REMOVED STRICT FAILSAFE. 
+    // We handle the empty case in the "Smart Save" logic at the bottom.
 
     const browser = await puppeteer.launch({ 
         headless: true,
@@ -68,8 +58,6 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             const text = document.body.innerText;
             const items = [];
             
-            // ... (Keep the Smart Parser logic from previous message) ...
-            // For brevity, I am using the previous parser logic:
             const lines = text.split('\n');
             let currentGame = null;
             const gameNames = ['3D Lotto', 'Swertres', '2D Lotto', 'EZ2', '4D Lotto', '6D Lotto', 'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'];
@@ -129,12 +117,21 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             return getTs(b.date) - getTs(a.date);
         });
 
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Saved ${newCount} new entries.`);
+        // --- SMART SAVE LOGIC ---
+        // 1. If we found new data -> Save.
+        // 2. If we had existing data -> Save (updates file).
+        // 3. If we started empty AND found nothing -> DO NOT Save (prevents empty file creation).
+        if (newCount > 0 || initialCount > 0) {
+            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+            console.log(`💾 Saved ${newCount} new entries.`);
+        } else {
+            console.log("⚠️ No results found. No file saved to prevent empty database.");
+            // We exit with error here ONLY if we started empty and found nothing
+            process.exit(1); 
+        }
 
     } catch (error) {
         console.error("❌ Error:", error.message);
-        // Exit with error code so GitHub knows it failed
         process.exit(1);
     }
 
