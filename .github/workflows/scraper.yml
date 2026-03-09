@@ -44,3 +44,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: /public_html/
+          protocol: ftps  # <--- CRITICAL FIX: Forces secure connection
+          security: strict
