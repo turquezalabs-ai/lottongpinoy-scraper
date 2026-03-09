@@ -37,10 +37,16 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     // REMOVED STRICT FAILSAFE. 
     // We handle the empty case in the "Smart Save" logic at the bottom.
 
-    const browser = await puppeteer.launch({ 
-        headless: true,
+        const browser = await puppeteer.launch({ 
+        headless: "new", // Use the NEW headless mode (More stable)
         executablePath: '/opt/google/chrome/chrome', 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage', // <--- CRITICAL FIX: Prevents crashes in CI
+            '--disable-setuid-sandbox'
+        ]
     });
     
     const page = await browser.newPage();
