@@ -123,18 +123,21 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             return getTs(b.date) - getTs(a.date);
         });
 
-        // --- SMART SAVE LOGIC ---
-        // 1. If we found new data -> Save.
-        // 2. If we had existing data -> Save (updates file).
-        // 3. If we started empty AND found nothing -> DO NOT Save (prevents empty file creation).
-        if (newCount > 0 || initialCount > 0) {
-            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-            console.log(`💾 Saved ${newCount} new entries.`);
-        } else {
-            console.log("⚠️ No results found. No file saved to prevent empty database.");
-            // We exit with error here ONLY if we started empty and found nothing
-            process.exit(1); 
+        // --- STRICT DATABASE PROTECTION ---
+        
+        // RULE 1: If we started with 0 data -> ABORT.
+        // It is impossible to have a valid database of 0 entries. 
+        // This prevents overwriting good data with empty data.
+        if (initialCount === 0) {
+            console.error("❌ CRITICAL ERROR: Database is empty. Refusing to save to prevent data loss.");
+            console.error("❌ Please restore 'results.json' from backup.");
+            process.exit(1); // Kill the job
         }
+
+        // RULE 2: If we have data (initialCount > 0), proceed.
+        // We always save here to update the timestamps/prizes, even if no new items found.
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+        console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
 
     } catch (error) {
         console.error("❌ Error:", error.message);
