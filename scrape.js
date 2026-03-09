@@ -14,7 +14,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED (v3 - Multi-Result Row Support)");
+    console.log("⚡ REAL-TIME SCRAPER STARTED (v4 - Correct Times)");
     
     let currentData = [];
     
@@ -75,8 +75,8 @@ const SAFETY_THRESHOLD = 5000;
                 return name;
             };
 
-            // Regex for Global matching (find ALL occurrences in a row)
-            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|4:00 PM|4PM|9:00 PM|9PM)/gi;
+            // FIX: Updated Regex to include 2PM and 5PM correctly
+            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|5:00 PM|5PM|9:00 PM|9PM)/gi;
             const numRegex = /(\d{1,2}(-\d{1,2})+)/g;
 
             let currentGame = null;
@@ -108,7 +108,6 @@ const SAFETY_THRESHOLD = 5000;
                 if (isTimeBased && timeMatches && timeMatches.length > 0) {
                     // TIME GAMES (2D, 3D)
                     // Pair Time[i] with Number[i]
-                    // Logic: Usually the order matches (11AM -> first number, 4PM -> second number)
                     
                     const count = Math.min(timeMatches.length, numMatches.length);
                     for (let i = 0; i < count; i++) {
@@ -125,7 +124,6 @@ const SAFETY_THRESHOLD = 5000;
                     }
                 } else if (!isTimeBased) {
                     // DAILY GAMES (6D, 4D)
-                    // Only take the first number set found (usually only one result per row for these)
                     const combination = numMatches[0];
                     
                     const alreadyAdded = items.some(i => i.game === currentGame && i.date === new Date().toISOString().split('T')[0]);
