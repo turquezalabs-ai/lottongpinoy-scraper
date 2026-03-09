@@ -36,11 +36,20 @@ async function fetchExistingData(url) {
     console.log("🏛️ Starting OFFICIAL PCSO Scraper...");
     
     let currentData = await fetchExistingData(LIVE_DATA_URL);
+    const initialCount = currentData.length;
+    console.log(`💾 Loaded ${initialCount} existing entries.`);
+
+    // FAILSAFE: Don't run if we couldn't load the database
+    if (initialCount === 0) {
+        console.error("❌ FAILSAFE: No data loaded. Aborting to prevent overwrite.");
+        return;
+    }
+
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     const browser = await puppeteer.launch({ 
         headless: true,
-        executablePath: '/opt/google/chrome/chrome', // CRITICAL: Use installed Chrome
+        executablePath: '/opt/google/chrome/chrome', 
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
     
@@ -49,6 +58,7 @@ async function fetchExistingData(url) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     
     let newCount = 0;
+    let updateCount = 0; // Track updates too
 
     try {
         await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -89,7 +99,7 @@ async function fetchExistingData(url) {
                     table.querySelectorAll('tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
-                            const game = correctName; // FORCE NAME
+                            const game = correctName;
                             const combo = cells[1].innerText.trim();
                             const dateStr = cells[2].innerText.trim();
                             const prize = cells[3].innerText.trim();
@@ -103,15 +113,33 @@ async function fetchExistingData(url) {
                     return items;
                 }, game.name);
 
+                // --- UPDATED MERGE LOGIC ---
                 results.forEach(item => {
-                    if (!currentData.some(i => i.date === item.date && i.combination === item.combination && i.game === item.game)) {
+                    const existingIndex = currentData.findIndex(i => 
+                        i.date === item.date && 
+                        i.game === item.game && 
+                        i.combination === item.combination
+                    );
+
+                    if (existingIndex === -1) {
+                        // It's NEW
                         currentData.push(item);
                         newCount++;
+                        console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
+                    } else {
+                        // It EXISTS, check if we need to UPDATE (Fix TBA)
+                        const existingItem = currentData[existingIndex];
+                        if (existingItem.prize === '₱ TBA' || existingItem.winners === 'TBA') {
+                            // Replace with full data
+                            currentData[existingIndex] = item; 
+                            updateCount++;
+                            console.log(`\n   🔄 UPDATED: ${item.game} - ${item.combination}`);
+                        }
                     }
                 });
-                console.log(`✅`);
+                process.stdout.write(`✅ Done\n`); // Keep log clean
             } catch (e) {
-                console.log(`❌`);
+                console.log(`❌ Error\n`);
             }
         }
 
@@ -121,7 +149,7 @@ async function fetchExistingData(url) {
         });
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Saved. New entries: ${newCount}`);
+        console.log(`💾 Done! Added: ${newCount}, Updated: ${updateCount}`);
 
     } catch (error) {
         console.error("❌ Error:", error.message);
