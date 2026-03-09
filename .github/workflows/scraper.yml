@@ -43,6 +43,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
-          server-dir: domain/lottong-pinoy.com/public_html/
+          server-dir: domains/lottong-pinoy.com/public_html/
           protocol: ftps  # <--- CRITICAL FIX: Forces secure connection
           security: loose
