@@ -32,6 +32,9 @@ async function fetchExistingData(url) {
     let currentData = await fetchExistingData(LIVE_DATA_URL);
     console.log(`💾 Loaded ${currentData.length} existing entries.`);
 
+    // SAFETY CHECK: If we start empty, we should be careful not to overwrite good data
+    // but for now, we proceed to debug why we find 0 results.
+
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     const browser = await puppeteer.launch({ 
@@ -55,13 +58,13 @@ async function fetchExistingData(url) {
             const items = [];
             const text = document.body.innerText;
 
-            // FIXED REGEX:
-            // 1. Flexible Game Names.
-            // 2. Flexible Time (Handles spaces).
-            // 3. FLEXIBLE NUMBERS: \d{1,2}(?:[-\s]\d{1,2})+
-            //    This means "One number followed by one or more numbers".
-            //    Matches: 1-2 (2D), 1-2-3 (3D), 1-2-3-4 (4D), 1-2-3-4-5-6 (Major).
-            
+            // --- DEBUG START ---
+            console.log("---- WEBSITE TEXT START (First 1000 chars) ----");
+            console.log(text.substring(0, 1000));
+            console.log("---- WEBSITE TEXT END ----");
+            // --- DEBUG END ---
+
+            // Regex...
             const regex = /(3D|Swertres|2D|EZ2|4D|6D|Ultra Lotto|Grand Lotto|Super Lotto|Mega Lotto|Lotto)\s?(6\/58|6\/55|6\/49|6\/45|6\/42)?\s?(11AM|4PM|9PM|11:00\s?AM|4:00\s?PM|9:00\s?PM)?[:\s]+(\d{1,2}(?:[-\s]\d{1,2})+)/gi;
             
             let match;
