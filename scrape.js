@@ -35,8 +35,19 @@ async function fetchExistingData(url) {
 (async () => {
     console.log("⚡ REAL-TIME SCRAPER STARTED");
     
-    let currentData = await fetchExistingData(LIVE_DATA_URL);
-    console.log(`💾 Loaded ${currentData.length} existing entries.`);
+        let currentData = await fetchExistingData(LIVE_DATA_URL);
+    const initialCount = currentData.length;
+    console.log(`💾 Loaded ${initialCount} existing entries.`);
+
+    // --- FAILSAFE ---
+    // If we failed to load existing data (Network Error), currentData is empty.
+    // We should NOT proceed to save, or we will overwrite the live database with a tiny file.
+    if (initialCount === 0) {
+        console.error("❌ FAILSAFE TRIGGERED: No data loaded from live site.");
+        console.error("❌ This prevents overwriting the database with partial data.");
+        console.error("❌ Aborting process. Check your internet connection or Hostinger firewall.");
+        return; // STOP THE SCRIPT
+    }
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
