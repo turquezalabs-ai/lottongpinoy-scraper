@@ -40,4 +40,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
-          server-dir: /public_html/
+          server-dir: domains/lottong-pinoy.com/public_html/ # FIXED PATH
+          protocol: ftps
+          security: loose
