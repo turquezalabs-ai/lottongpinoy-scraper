@@ -14,7 +14,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED (v4 - Correct Times)");
+    console.log("⚡ REAL-TIME SCRAPER STARTED");
     
     let currentData = [];
     
@@ -35,10 +35,13 @@ const SAFETY_THRESHOLD = 5000;
 
     const initialCount = currentData.length;
 
+    // FAILSAFE
     if (initialCount > 0 && initialCount < SAFETY_THRESHOLD) {
-        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}. Aborting.`);
+        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}.`);
+        console.error("❌ Restore backup.");
         process.exit(1); 
     }
+    if (initialCount === 0) console.warn("⚠️ WARNING: No data loaded.");
 
     const browser = await puppeteer.launch({ 
         headless: "new", 
@@ -62,84 +65,57 @@ const SAFETY_THRESHOLD = 5000;
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await wait(4000);
 
+        // --- HTML TABLE PARSER (No Time Mapping) ---
         const items = await page.evaluate(() => {
-            const items = [];
-            
-            const timeGames = ['3D Lotto', 'Swertres', '2D Lotto', 'EZ2'];
-            const dailyGames = ['4D Lotto', '6D Lotto', 'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'];
-            const allGames = [...timeGames, ...dailyGames];
+            const results = [];
+            const tables = document.querySelectorAll('table.has-fixed-layout');
 
-            const normalizeGame = (name) => {
-                if (name.includes('Swertres')) return '3D Lotto';
-                if (name.includes('EZ2')) return '2D Lotto';
-                return name;
-            };
-
-            // FIX: Updated Regex to include 2PM and 5PM correctly
-            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|5:00 PM|5PM|9:00 PM|9PM)/gi;
-            const numRegex = /(\d{1,2}(-\d{1,2})+)/g;
-
-            let currentGame = null;
-            let isTimeBased = false;
-
-            const rows = document.querySelectorAll('tr, div.elementor-widget-container');
-
-            rows.forEach(row => {
-                const rowText = row.innerText;
-
-                // A. Detect Game Name
-                allGames.forEach(game => {
-                    if (rowText.toLowerCase().includes(game.toLowerCase())) {
-                        currentGame = normalizeGame(game);
-                        isTimeBased = timeGames.includes(currentGame);
-                    }
-                });
-
-                if (!currentGame) return;
-
-                // B. Extract ALL Numbers and ALL Times from the row
-                const numMatches = rowText.match(numRegex);
-                const timeMatches = rowText.match(timeRegex);
-
-                if (!numMatches || numMatches.length === 0) return;
-
-                // C. Logic Branch
+            tables.forEach(table => {
+                const th = table.querySelector('thead th');
+                if (!th) return;
                 
-                if (isTimeBased && timeMatches && timeMatches.length > 0) {
-                    // TIME GAMES (2D, 3D)
-                    // Pair Time[i] with Number[i]
-                    
-                    const count = Math.min(timeMatches.length, numMatches.length);
-                    for (let i = 0; i < count; i++) {
-                        let time = timeMatches[i].replace(':00', '').replace(' ', '').toUpperCase();
-                        let combination = numMatches[i];
-                        
-                        items.push({
-                            game: `${currentGame} ${time}`,
-                            combination: combination,
-                            prize: 'TBA',
-                            winners: 'TBA',
-                            date: new Date().toISOString().split('T')[0]
-                        });
-                    }
-                } else if (!isTimeBased) {
-                    // DAILY GAMES (6D, 4D)
-                    const combination = numMatches[0];
-                    
-                    const alreadyAdded = items.some(i => i.game === currentGame && i.date === new Date().toISOString().split('T')[0]);
-                    if (!alreadyAdded) {
-                        items.push({
-                            game: currentGame,
-                            combination: combination,
-                            prize: 'TBA',
-                            winners: 'TBA',
-                            date: new Date().toISOString().split('T')[0]
-                        });
-                    }
-                }
+                let gameName = th.innerText.trim();
+                if (gameName.includes('Swertres')) gameName = '3D Lotto';
+                if (gameName.includes('EZ2')) gameName = '2D Lotto';
+                
+                const ths = table.querySelectorAll('thead th');
+                let dateStr = ths.length > 1 ? ths[1].innerText.trim() : '';
+                let dateFormatted = dateStr;
+                const dateParts = new Date(dateStr);
+                if (!isNaN(dateParts)) dateFormatted = dateParts.toISOString().split('T')[0];
+
+                const rows = table.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length < 2) return;
+
+                    const col1 = cells[0].innerText.trim();
+                    const col2 = cells[1].innerText.trim();
+
+                    if (col1.includes('Prize') || col1.includes('Winner')) return;
+                    const isNumbers = /(\d{1,2}[-\s]\d{1,2})/.test(col2);
+                    if (!isNumbers) return;
+
+                    let timeRaw = col1; // e.g., "2:00 PM"
+                    let numbers = col2.replace(/\s/g, '-');
+
+                    // --- KEEP ORIGINAL TIMES (2PM / 5PM) ---
+                    // Convert "2:00 PM" -> "2PM"
+                    let normalizedTime = timeRaw.replace(':00', '').replace(' ', '');
+
+                    const finalGame = `${gameName} ${normalizedTime}`;
+
+                    results.push({
+                        game: finalGame,
+                        combination: numbers,
+                        prize: '₱ TBA',
+                        winners: 'TBA',
+                        date: dateFormatted
+                    });
+                });
             });
 
-            return items;
+            return results;
         });
 
         console.log(`🔍 Found ${items.length} potential results.`);
@@ -158,19 +134,16 @@ const SAFETY_THRESHOLD = 5000;
             }
         });
 
-        if (newCount > 0) {
-            currentData.sort((a, b) => {
-                const getTs = (str) => {
-                    const parts = str.split('-');
-                    return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
-                };
-                return getTs(b.date) - getTs(a.date);
-            });
-            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-            console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
-        } else {
-            console.log("ℹ️ No new entries added.");
-        }
+        currentData.sort((a, b) => {
+            const getTs = (str) => {
+                const parts = str.split('-');
+                return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
+            };
+            return getTs(b.date) - getTs(a.date);
+        });
+
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+        console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
 
     } catch (error) {
         console.error("❌ Error:", error.message);
