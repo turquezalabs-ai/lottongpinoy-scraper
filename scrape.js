@@ -20,9 +20,15 @@ async function fetchExistingData(url) {
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
                 try { resolve(JSON.parse(data)); } 
-                catch (e) { resolve([]); }
+                catch (e) { 
+                    console.log("⚠️ Could not parse live data (File might be empty).");
+                    resolve([]); 
+                }
             });
-        }).on('error', () => resolve([]));
+        }).on('error', (e) => {
+            console.log(`❌ Network Error loading data: ${e.message}`);
+            resolve([]);
+        });
     });
 }
 
@@ -51,75 +57,98 @@ async function fetchExistingData(url) {
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await wait(4000); 
 
-        // CHANGE: Return BOTH text and items
-        const { text, items } = await page.evaluate(() => {
-            const text = document.body.innerText;
+        const results = await page.evaluate(() => {
             const items = [];
+            const text = document.body.innerText;
             
-            // Regex...
-            const regex = /(3D|Swertres|2D|EZ2|4D|6D|Ultra Lotto|Grand Lotto|Super Lotto|Mega Lotto|Lotto)\s?(6\/58|6\/55|6\/49|6\/45|6\/42)?\s?(11AM|4PM|9PM|11:00\s?AM|4:00\s?PM|9:00\s?PM)?[:\s]+(\d{1,2}(?:[-\s]\d{1,2})+)/gi;
+            // --- DEBUG ---
+            // console.log(text.substring(0, 1000)); // Optional: comment out once working
+
+            // --- SMART PARSER (State Machine) ---
+            // 1. Split text into lines
+            const lines = text.split('\n');
             
-            let match;
-            while ((match = regex.exec(text)) !== null) {
-                let game = match[1].replace('Swertres', '3D').replace('EZ2', '2D');
-                if(match[2]) game += ' ' + match[2];
+            let currentGame = null;
+            
+            // 2. Define what we are looking for
+            const gameNames = [
+                '3D Lotto', 'Swertres', '2D Lotto', 'EZ2', 
+                '4D Lotto', '6D Lotto', 
+                'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 
+                'Mega Lotto 6/45', 'Lotto 6/42'
+            ];
+            
+            const timePattern = /(2:00 PM|4:00 PM|9:00 PM|11:00 AM|2PM|4PM|9PM|11AM)/i;
+            const numPattern = /(\d{1,2}[-\s]\d{1,2}(?:[-\s]\d{1,2})*)/; // Matches 1-2, 1-2-3, 1-2-3-4-5-6
 
-                if(game === '3D') game = '3D Lotto';
-                if(game === '2D') game = '2D Lotto';
-                if(game === '4D') game = '4D Lotto';
-                if(game === '6D') game = '6D Lotto';
+            // 3. Iterate lines
+            lines.forEach(line => {
+                const cleanLine = line.trim();
+                if (!cleanLine) return;
 
-                if(match[3]) {
-                    let time = match[3].replace(':00', '').replace(' ', '');
-                    game += ' ' + time;
-                }
-
-                let numbers = match[4].replace(/\s/g, '-');
-                
-                items.push({
-                    game: game.trim(),
-                    combination: numbers,
-                    prize: '₱ TBA',
-                    winners: 'TBA',
-                    date: new Date().toISOString().split('T')[0]
+                // A. Check if this line is a Game Header
+                // We check if the line contains one of our game names
+                gameNames.forEach(game => {
+                    if (cleanLine.includes(game)) {
+                        currentGame = game;
+                        // Normalize names
+                        if (currentGame === 'Swertres') currentGame = '3D Lotto';
+                        if (currentGame === 'EZ2') currentGame = '2D Lotto';
+                    }
                 });
-            }
-            return { text, items };
+
+                // B. Check if this line is a Result (Time + Numbers)
+                // Must have a time AND numbers
+                const hasTime = timePattern.test(cleanLine);
+                const numMatch = cleanLine.match(numPattern);
+
+                if (hasTime && numMatch && currentGame) {
+                    let time = cleanLine.match(timePattern)[1].replace(':00', '').replace(' ', ''); // "2:00 PM" -> "2PM"
+                    let numbers = numMatch[1].replace(/\s/g, '-'); // "1 2 3" -> "1-2-3"
+
+                    items.push({
+                        game: `${currentGame} ${time}`,
+                        combination: numbers,
+                        prize: '₱ TBA',
+                        winners: 'TBA',
+                        date: new Date().toISOString().split('T')[0]
+                    });
+                }
+            });
+
+            return items;
         });
 
-        // DEBUG: Print here in Node context (Guaranteed to show)
-        console.log("---- WEBSITE TEXT START (First 1000 chars) ----");
-        console.log(text.substring(0, 1000));
-        console.log("---- WEBSITE TEXT END ----");
+        console.log(`🔍 Found ${results.length} potential results.`);
 
-        console.log(`🔍 Found ${items.length} potential results.`);
+        if (results.length > 0) {
+            results.forEach(item => {
+                const exists = currentData.some(i => 
+                    i.date === item.date && 
+                    i.game === item.game && 
+                    i.combination === item.combination
+                );
 
-        items.forEach(item => {
-            const exists = currentData.some(i => 
-                i.date === item.date && 
-                i.game === item.game && 
-                i.combination === item.combination
-            );
+                if (!exists) {
+                    currentData.push(item);
+                    newCount++;
+                    console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
+                }
+            });
 
-            if (!exists) {
-                currentData.push(item);
-                newCount++;
-                console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
-            }
-        });
+            currentData.sort((a, b) => {
+                const getTs = (str) => {
+                    const parts = str.split('-');
+                    return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
+                };
+                return getTs(b.date) - getTs(a.date);
+            });
 
-        currentData.sort((a, b) => {
-            const getTs = (str) => {
-                const parts = str.split('-');
-                return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
-            };
-            return getTs(b.date) - getTs(a.date);
-        });
-
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-
-        if (newCount > 0) console.log(`💾 Saved ${newCount} new entries.`);
-        else console.log("✅ No new updates found.");
+            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+            console.log(`💾 Saved ${newCount} new entries.`);
+        } else {
+            console.log("⚠️ No results found. Check website format.");
+        }
 
     } catch (error) {
         console.error("❌ Error:", error.message);
