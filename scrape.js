@@ -74,7 +74,13 @@ const SAFETY_THRESHOLD = 5000;
                 const th = table.querySelector('thead th');
                 if (!th) return;
                 
-                let gameName = th.innerText.trim();
+                                let gameName = th.innerText.trim();
+                
+                // STRATEGY: Only Real-Time scrape 2D and 3D.
+                // Skip 4D, 6D, and Major games (let Official Scraper handle them).
+                if (!gameName.includes('2D Lotto') && !gameName.includes('3D Lotto')) {
+                    return; // Skip this table
+                }
                 if (gameName.includes('Swertres')) gameName = '3D Lotto';
                 if (gameName.includes('EZ2')) gameName = '2D Lotto';
                 
