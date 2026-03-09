@@ -13,51 +13,31 @@ const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
 const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Helper: Robust Download with Timeout & Retry
-async function fetchExistingData(url) {
-    const maxRetries = 3;
-    let attempts = 0;
-
-    while (attempts < maxRetries) {
-        attempts++;
-        console.log(`⬇️  Attempt ${attempts} to load live data...`);
-        
-        try {
-            const data = await new Promise((resolve, reject) => {
-                const req = https.get(url, (res) => {
-                    let data = '';
-                    res.on('data', (chunk) => { data += chunk; });
-                    res.on('end', () => {
-                        try { resolve(JSON.parse(data)); } 
-                        catch (e) { reject(new Error("Parse error")); }
-                    });
-                });
-                
-                // Set timeout to 15 seconds
-                req.setTimeout(15000, () => {
-                    req.destroy(new Error("Request Timeout"));
-                });
-
-                req.on('error', (e) => {
-                    reject(e);
-                });
-            });
-            return data;
-        } catch (error) {
-            console.error(`   ❌ Attempt ${attempts} failed: ${error.message}`);
-            // Wait 5 seconds before retrying
-            if (attempts < maxRetries) await wait(5000);
-        }
-    }
-    return []; // Return empty if all retries fail
-}
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED");
+        console.log("⚡ REAL-TIME SCRAPER STARTED");
     
-    let currentData = await fetchExistingData(LIVE_DATA_URL);
+    // SWITCH: Read from Local Repo instead of Live URL
+    // This avoids the Hostinger Firewall Timeout issue.
+    let currentData = [];
+    
+    // Ensure folder exists
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+
+    if (fs.existsSync(OUTPUT_FILE)) {
+        try {
+            const rawData = fs.readFileSync(OUTPUT_FILE);
+            currentData = JSON.parse(rawData);
+            console.log(`💾 Loaded ${currentData.length} entries from Local Repo.`);
+        } catch (e) {
+            console.log("⚠️ Error reading local file. Starting fresh.");
+            currentData = [];
+        }
+    } else {
+        console.log("⚠️ No local data file found. Starting fresh.");
+    }
+
     const initialCount = currentData.length;
-    console.log(`💾 Loaded ${initialCount} existing entries.`);
 
     // --- FAILSAFE ---
     if (initialCount === 0) {
