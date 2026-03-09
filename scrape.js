@@ -11,12 +11,11 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
 const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// SAFETY THRESHOLD: Your database is ~31,500 entries.
-// If we load a file with less than 5000 entries, we assume it is corrupt and abort.
+// SAFETY THRESHOLD
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED");
+    console.log("⚡ REAL-TIME SCRAPER STARTED (DOM PARSER)");
     
     // 1. Read from Local Repo
     let currentData = [];
@@ -38,18 +37,11 @@ const SAFETY_THRESHOLD = 5000;
 
     const initialCount = currentData.length;
 
-    // --- ULTIMATE PROTECTION LOGIC ---
-    
-    // FAILSAFE: If we loaded a tiny database (e.g., 4 entries), stop immediately.
     if (initialCount > 0 && initialCount < SAFETY_THRESHOLD) {
-        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}.`);
-        console.error(`❌ This is below the safety threshold of ${SAFETY_THRESHOLD}.`);
-        console.error("❌ The database appears corrupted or incomplete. Aborting to prevent overwrite.");
-        console.error("❌ ACTION: Please restore 'results.json' from your backup.");
+        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}. Aborting.`);
         process.exit(1); 
     }
 
-    // If database is empty, warn but proceed (might be first run)
     if (initialCount === 0) {
         console.warn("⚠️ WARNING: No data loaded.");
     }
@@ -76,43 +68,104 @@ const SAFETY_THRESHOLD = 5000;
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await wait(4000);
 
-        const { text, items } = await page.evaluate(() => {
-            const text = document.body.innerText;
+        // ==========================================================
+        // NEW LOGIC: DOM ROW PARSER
+        // Instead of reading text, we iterate through HTML Table Rows (TR)
+        // This ensures we catch EVERY draw (11AM, 4PM, 9PM) separately.
+        // ==========================================================
+        const items = await page.evaluate(() => {
             const items = [];
             
-            const lines = text.split('\n');
-            let currentGame = null;
-            const gameNames = ['3D Lotto', 'Swertres', '2D Lotto', 'EZ2', '4D Lotto', '6D Lotto', 'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'];
-            const timePattern = /(2:00 PM|4:00 PM|9:00 PM|11:00 AM|2PM|4PM|9PM|11AM)/i;
-            const numPattern = /(\d{1,2}[-\s]\d{1,2}(?:[-\s]\d{1,2})*)/;
+            // Game Names to look for
+            const gameKeywords = [
+                '3D Lotto', 'Swertres', 
+                '2D Lotto', 'EZ2', 
+                '4D Lotto', '6D Lotto', 
+                'Ultra Lotto 6/58', 'Grand Lotto 6/55', 
+                'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'
+            ];
+            
+            // Normalize names
+            const normalizeGame = (name) => {
+                if (name.includes('Swertres')) return '3D Lotto';
+                if (name.includes('EZ2')) return '2D Lotto';
+                return name;
+            };
 
-            lines.forEach(line => {
-                const cleanLine = line.trim();
-                if (!cleanLine) return;
-                gameNames.forEach(game => {
-                    if (cleanLine.includes(game)) {
-                        currentGame = game;
-                        if (currentGame === 'Swertres') currentGame = '3D Lotto';
-                        if (currentGame === 'EZ2') currentGame = '2D Lotto';
+            // Regex for Time and Numbers
+            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|4:00 PM|4PM|9:00 PM|9PM)/i;
+            const numRegex = /(\d{1,2}(-\d{1,2})+)/g; // Matches "1-2-3" or "12-45"
+
+            let currentGame = null;
+
+            // 1. Find all Table Rows (most common for lotto results)
+            const rows = document.querySelectorAll('tr');
+
+            rows.forEach(row => {
+                const rowText = row.innerText;
+
+                // Check if this row defines a Game Name
+                gameKeywords.forEach(game => {
+                    if (rowText.toLowerCase().includes(game.toLowerCase())) {
+                        currentGame = normalizeGame(game);
                     }
                 });
 
-                const hasTime = timePattern.test(cleanLine);
-                const numMatch = cleanLine.match(numPattern);
+                // If we have a game context, look for results in this row
+                if (currentGame) {
+                    // Check for Time
+                    const timeMatch = rowText.match(timeRegex);
+                    // Check for Numbers (Global match to find all if multiple in row)
+                    const numMatches = rowText.match(numRegex);
 
-                if (hasTime && numMatch && currentGame) {
-                    let time = cleanLine.match(timePattern)[1].replace(':00', '').replace(' ', '');
-                    let numbers = numMatch[1].replace(/\s/g, '-');
-                    items.push({
-                        game: `${currentGame} ${time}`,
-                        combination: numbers,
-                        prize: '₱ TBA',
-                        winners: 'TBA',
-                        date: new Date().toISOString().split('T')[0]
-                    });
+                    if (timeMatch && numMatches) {
+                        let time = timeMatch[1].replace(':00', '').replace(' ', '').toUpperCase(); // Normalize to "11AM"
+                        
+                        // Use the first number match found in the row
+                        let combination = numMatches[0]; 
+                        
+                        items.push({
+                            game: `${currentGame} ${time}`,
+                            combination: combination,
+                            prize: 'TBA',
+                            winners: 'TBA',
+                            date: new Date().toISOString().split('T')[0]
+                        });
+                    }
                 }
             });
-            return { text, items };
+
+            // 2. Fallback: Check for Div Cards (some sites use divs)
+            const cards = document.querySelectorAll('.result-card, .card, .elementor-widget-container');
+            cards.forEach(card => {
+                const cardText = card.innerText;
+                
+                gameKeywords.forEach(game => {
+                    if (cardText.toLowerCase().includes(game.toLowerCase())) {
+                        currentGame = normalizeGame(game);
+                    }
+                });
+
+                if (currentGame) {
+                    const timeMatch = cardText.match(timeRegex);
+                    const numMatch = cardText.match(numRegex);
+                    
+                    if (timeMatch && numMatch) {
+                        let time = timeMatch[1].replace(':00', '').replace(' ', '').toUpperCase();
+                        let combination = numMatch[0]; // First match
+                        
+                        items.push({
+                            game: `${currentGame} ${time}`,
+                            combination: combination,
+                            prize: 'TBA',
+                            winners: 'TBA',
+                            date: new Date().toISOString().split('T')[0]
+                        });
+                    }
+                }
+            });
+
+            return items;
         });
 
         console.log(`🔍 Found ${items.length} potential results.`);
@@ -131,16 +184,19 @@ const SAFETY_THRESHOLD = 5000;
             }
         });
 
-        currentData.sort((a, b) => {
-            const getTs = (str) => {
-                const parts = str.split('-');
-                return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
-            };
-            return getTs(b.date) - getTs(a.date);
-        });
-
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
+        if (newCount > 0) {
+            currentData.sort((a, b) => {
+                const getTs = (str) => {
+                    const parts = str.split('-');
+                    return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
+                };
+                return getTs(b.date) - getTs(a.date);
+            });
+            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+            console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
+        } else {
+            console.log("ℹ️ No new entries added.");
+        }
 
     } catch (error) {
         console.error("❌ Error:", error.message);
