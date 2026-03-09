@@ -11,13 +11,11 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
 const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// SAFETY THRESHOLD
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED (DOM PARSER)");
+    console.log("⚡ REAL-TIME SCRAPER STARTED (v2 - Multi-Game Support)");
     
-    // 1. Read from Local Repo
     let currentData = [];
     
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
@@ -42,10 +40,6 @@ const SAFETY_THRESHOLD = 5000;
         process.exit(1); 
     }
 
-    if (initialCount === 0) {
-        console.warn("⚠️ WARNING: No data loaded.");
-    }
-
     const browser = await puppeteer.launch({ 
         headless: "new", 
         executablePath: '/opt/google/chrome/chrome', 
@@ -68,99 +62,78 @@ const SAFETY_THRESHOLD = 5000;
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await wait(4000);
 
-        // ==========================================================
-        // NEW LOGIC: DOM ROW PARSER
-        // Instead of reading text, we iterate through HTML Table Rows (TR)
-        // This ensures we catch EVERY draw (11AM, 4PM, 9PM) separately.
-        // ==========================================================
         const items = await page.evaluate(() => {
             const items = [];
             
-            // Game Names to look for
-            const gameKeywords = [
-                '3D Lotto', 'Swertres', 
-                '2D Lotto', 'EZ2', 
-                '4D Lotto', '6D Lotto', 
-                'Ultra Lotto 6/58', 'Grand Lotto 6/55', 
-                'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'
-            ];
+            // Games that require TIME (2D, 3D, Swertres, EZ2)
+            const timeGames = ['3D Lotto', 'Swertres', '2D Lotto', 'EZ2'];
+            // Games that are DAILY (No specific time)
+            const dailyGames = ['4D Lotto', '6D Lotto', 'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'];
             
-            // Normalize names
+            const allGames = [...timeGames, ...dailyGames];
+
+            // Normalize names (e.g., Swertres -> 3D Lotto)
             const normalizeGame = (name) => {
                 if (name.includes('Swertres')) return '3D Lotto';
                 if (name.includes('EZ2')) return '2D Lotto';
                 return name;
             };
 
-            // Regex for Time and Numbers
             const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|4:00 PM|4PM|9:00 PM|9PM)/i;
-            const numRegex = /(\d{1,2}(-\d{1,2})+)/g; // Matches "1-2-3" or "12-45"
+            const numRegex = /(\d{1,2}(-\d{1,2})+)/g; 
 
             let currentGame = null;
+            let isTimeBased = false;
 
-            // 1. Find all Table Rows (most common for lotto results)
-            const rows = document.querySelectorAll('tr');
+            // Helper to add item
+            const addItem = (gameName, combination, timeLabel = '') => {
+                // Avoid duplicates logic inside evaluate is simple; 
+                // we just push, parent will handle global duplicate check
+                items.push({
+                    game: timeLabel ? `${gameName} ${timeLabel}` : gameName,
+                    combination: combination,
+                    prize: 'TBA',
+                    winners: 'TBA',
+                    date: new Date().toISOString().split('T')[0]
+                });
+            };
+
+            // 1. Scan Table Rows
+            const rows = document.querySelectorAll('tr, div.elementor-widget-container');
 
             rows.forEach(row => {
                 const rowText = row.innerText;
 
-                // Check if this row defines a Game Name
-                gameKeywords.forEach(game => {
+                // A. Detect Game Name
+                allGames.forEach(game => {
                     if (rowText.toLowerCase().includes(game.toLowerCase())) {
                         currentGame = normalizeGame(game);
+                        isTimeBased = timeGames.includes(currentGame);
                     }
                 });
 
-                // If we have a game context, look for results in this row
-                if (currentGame) {
-                    // Check for Time
+                if (!currentGame) return;
+
+                // B. Extract Numbers
+                const numMatches = rowText.match(numRegex);
+                if (!numMatches) return; // No numbers in this row
+
+                const combination = numMatches[0]; // Take the first match
+
+                // C. Logic Branch
+                if (isTimeBased) {
+                    // MUST find time for 2D/3D
                     const timeMatch = rowText.match(timeRegex);
-                    // Check for Numbers (Global match to find all if multiple in row)
-                    const numMatches = rowText.match(numRegex);
-
-                    if (timeMatch && numMatches) {
-                        let time = timeMatch[1].replace(':00', '').replace(' ', '').toUpperCase(); // Normalize to "11AM"
-                        
-                        // Use the first number match found in the row
-                        let combination = numMatches[0]; 
-                        
-                        items.push({
-                            game: `${currentGame} ${time}`,
-                            combination: combination,
-                            prize: 'TBA',
-                            winners: 'TBA',
-                            date: new Date().toISOString().split('T')[0]
-                        });
-                    }
-                }
-            });
-
-            // 2. Fallback: Check for Div Cards (some sites use divs)
-            const cards = document.querySelectorAll('.result-card, .card, .elementor-widget-container');
-            cards.forEach(card => {
-                const cardText = card.innerText;
-                
-                gameKeywords.forEach(game => {
-                    if (cardText.toLowerCase().includes(game.toLowerCase())) {
-                        currentGame = normalizeGame(game);
-                    }
-                });
-
-                if (currentGame) {
-                    const timeMatch = cardText.match(timeRegex);
-                    const numMatch = cardText.match(numRegex);
-                    
-                    if (timeMatch && numMatch) {
+                    if (timeMatch) {
                         let time = timeMatch[1].replace(':00', '').replace(' ', '').toUpperCase();
-                        let combination = numMatch[0]; // First match
-                        
-                        items.push({
-                            game: `${currentGame} ${time}`,
-                            combination: combination,
-                            prize: 'TBA',
-                            winners: 'TBA',
-                            date: new Date().toISOString().split('T')[0]
-                        });
+                        addItem(currentGame, combination, time);
+                    }
+                } else {
+                    // NO TIME needed for 6D, 4D, etc.
+                    // But we check if we already added this game today to avoid duplicates in the loop
+                    const alreadyAdded = items.some(i => i.game === currentGame && i.date === new Date().toISOString().split('T')[0]);
+                    if (!alreadyAdded) {
+                        addItem(currentGame, combination);
                     }
                 }
             });
