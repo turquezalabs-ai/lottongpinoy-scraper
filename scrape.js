@@ -11,10 +11,15 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
 const TARGET_URL = 'https://www.lottopcso.com/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// SAFETY THRESHOLD:
+// Your database is ~31,500 entries. If we ever load a file with less than 5000 entries,
+// we assume the file is corrupt/incomplete and ABORT saving to prevent data loss.
+const SAFETY_THRESHOLD = 5000;
+
 (async () => {
     console.log("⚡ REAL-TIME SCRAPER STARTED");
     
-    // 1. Read from Local Repo (Avoids Hostinger Timeout)
+    // 1. Read from Local Repo
     let currentData = [];
     
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
@@ -34,18 +39,35 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     const initialCount = currentData.length;
 
-    // REMOVED STRICT FAILSAFE. 
-    // We handle the empty case in the "Smart Save" logic at the bottom.
+    // --- ULTIMATE PROTECTION LOGIC ---
+    
+    // 1. Failsafe: If we loaded a tiny database (e.g., 4 entries), it means a previous run wiped it.
+    // We MUST stop here. We refuse to save a tiny file over a massive database.
+    if (initialCount > 0 && initialCount < SAFETY_THRESHOLD) {
+        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}.`);
+        console.error(`❌ This is below the safety threshold of ${SAFETY_THRESHOLD}.`);
+        console.error("❌ The database appears corrupted or incomplete. Aborting to prevent overwrite.");
+        console.error("❌ ACTION: Please restore 'results.json' from your backup (The 31,500 entry file).");
+        process.exit(1); // Kill the job
+    }
 
-        const browser = await puppeteer.launch({ 
-        headless: "new", // Use the NEW headless mode (More stable)
+    // 2. If database is truly empty (0), we might be starting brand new, but we should be careful.
+    if (initialCount === 0) {
+        console.warn("⚠️ WARNING: No data loaded.");
+        console.warn("⚠️ If this is a new installation, ignore this. If you had data, RESTORE BACKUP NOW.");
+        // We allow continuing here ONLY if we are sure we want to build from scratch.
+        // If you want to block empty starts too, uncomment the exit below:
+        // process.exit(1);
+    }
+
+    const browser = await puppeteer.launch({ 
+        headless: "new", 
         executablePath: '/opt/google/chrome/chrome', 
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-gpu',
-            '--disable-dev-shm-usage', // <--- CRITICAL FIX: Prevents crashes in CI
-            '--disable-setuid-sandbox'
+            '--disable-dev-shm-usage' 
         ]
     });
     
@@ -109,40 +131,4 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             );
 
             if (!exists) {
-                currentData.push(item);
-                newCount++;
-                console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
-            }
-        });
-
-        currentData.sort((a, b) => {
-            const getTs = (str) => {
-                const parts = str.split('-');
-                return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
-            };
-            return getTs(b.date) - getTs(a.date);
-        });
-
-        // --- STRICT DATABASE PROTECTION ---
-        
-        // RULE 1: If we started with 0 data -> ABORT.
-        // It is impossible to have a valid database of 0 entries. 
-        // This prevents overwriting good data with empty data.
-        if (initialCount === 0) {
-            console.error("❌ CRITICAL ERROR: Database is empty. Refusing to save to prevent data loss.");
-            console.error("❌ Please restore 'results.json' from backup.");
-            process.exit(1); // Kill the job
-        }
-
-        // RULE 2: If we have data (initialCount > 0), proceed.
-        // We always save here to update the timestamps/prizes, even if no new items found.
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
-
-    } catch (error) {
-        console.error("❌ Error:", error.message);
-        process.exit(1);
-    }
-
-    await browser.close();
-})();
+                currentData.push(item
