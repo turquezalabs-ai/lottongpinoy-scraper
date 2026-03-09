@@ -35,7 +35,22 @@ jobs:
 
       - name: Run Scraper
         run: node scrape.js
+      - name: Run Scraper
+        run: node scrape.js
 
+      # NEW STEP: Save progress to GitHub Repo
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/results.json
+          git commit -m "Update results.json" || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Live Site
+        # ...
       - name: Upload to Live Site
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
