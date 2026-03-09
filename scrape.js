@@ -14,7 +14,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER STARTED (v2 - Multi-Game Support)");
+    console.log("⚡ REAL-TIME SCRAPER STARTED (v3 - Multi-Result Row Support)");
     
     let currentData = [];
     
@@ -65,40 +65,23 @@ const SAFETY_THRESHOLD = 5000;
         const items = await page.evaluate(() => {
             const items = [];
             
-            // Games that require TIME (2D, 3D, Swertres, EZ2)
             const timeGames = ['3D Lotto', 'Swertres', '2D Lotto', 'EZ2'];
-            // Games that are DAILY (No specific time)
             const dailyGames = ['4D Lotto', '6D Lotto', 'Ultra Lotto 6/58', 'Grand Lotto 6/55', 'Super Lotto 6/49', 'Mega Lotto 6/45', 'Lotto 6/42'];
-            
             const allGames = [...timeGames, ...dailyGames];
 
-            // Normalize names (e.g., Swertres -> 3D Lotto)
             const normalizeGame = (name) => {
                 if (name.includes('Swertres')) return '3D Lotto';
                 if (name.includes('EZ2')) return '2D Lotto';
                 return name;
             };
 
-            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|4:00 PM|4PM|9:00 PM|9PM)/i;
-            const numRegex = /(\d{1,2}(-\d{1,2})+)/g; 
+            // Regex for Global matching (find ALL occurrences in a row)
+            const timeRegex = /(11:00 AM|11AM|2:00 PM|2PM|4:00 PM|4PM|9:00 PM|9PM)/gi;
+            const numRegex = /(\d{1,2}(-\d{1,2})+)/g;
 
             let currentGame = null;
             let isTimeBased = false;
 
-            // Helper to add item
-            const addItem = (gameName, combination, timeLabel = '') => {
-                // Avoid duplicates logic inside evaluate is simple; 
-                // we just push, parent will handle global duplicate check
-                items.push({
-                    game: timeLabel ? `${gameName} ${timeLabel}` : gameName,
-                    combination: combination,
-                    prize: 'TBA',
-                    winners: 'TBA',
-                    date: new Date().toISOString().split('T')[0]
-                });
-            };
-
-            // 1. Scan Table Rows
             const rows = document.querySelectorAll('tr, div.elementor-widget-container');
 
             rows.forEach(row => {
@@ -114,26 +97,46 @@ const SAFETY_THRESHOLD = 5000;
 
                 if (!currentGame) return;
 
-                // B. Extract Numbers
+                // B. Extract ALL Numbers and ALL Times from the row
                 const numMatches = rowText.match(numRegex);
-                if (!numMatches) return; // No numbers in this row
+                const timeMatches = rowText.match(timeRegex);
 
-                const combination = numMatches[0]; // Take the first match
+                if (!numMatches || numMatches.length === 0) return;
 
                 // C. Logic Branch
-                if (isTimeBased) {
-                    // MUST find time for 2D/3D
-                    const timeMatch = rowText.match(timeRegex);
-                    if (timeMatch) {
-                        let time = timeMatch[1].replace(':00', '').replace(' ', '').toUpperCase();
-                        addItem(currentGame, combination, time);
+                
+                if (isTimeBased && timeMatches && timeMatches.length > 0) {
+                    // TIME GAMES (2D, 3D)
+                    // Pair Time[i] with Number[i]
+                    // Logic: Usually the order matches (11AM -> first number, 4PM -> second number)
+                    
+                    const count = Math.min(timeMatches.length, numMatches.length);
+                    for (let i = 0; i < count; i++) {
+                        let time = timeMatches[i].replace(':00', '').replace(' ', '').toUpperCase();
+                        let combination = numMatches[i];
+                        
+                        items.push({
+                            game: `${currentGame} ${time}`,
+                            combination: combination,
+                            prize: 'TBA',
+                            winners: 'TBA',
+                            date: new Date().toISOString().split('T')[0]
+                        });
                     }
-                } else {
-                    // NO TIME needed for 6D, 4D, etc.
-                    // But we check if we already added this game today to avoid duplicates in the loop
+                } else if (!isTimeBased) {
+                    // DAILY GAMES (6D, 4D)
+                    // Only take the first number set found (usually only one result per row for these)
+                    const combination = numMatches[0];
+                    
                     const alreadyAdded = items.some(i => i.game === currentGame && i.date === new Date().toISOString().split('T')[0]);
                     if (!alreadyAdded) {
-                        addItem(currentGame, combination);
+                        items.push({
+                            game: currentGame,
+                            combination: combination,
+                            prize: 'TBA',
+                            winners: 'TBA',
+                            date: new Date().toISOString().split('T')[0]
+                        });
                     }
                 }
             });
