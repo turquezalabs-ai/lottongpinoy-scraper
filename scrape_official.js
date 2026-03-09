@@ -13,13 +13,20 @@ const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
 const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- FORCE NEW LABELS ---
+// ID 8 is "11AM" on site -> We force it to "2PM"
+// ID 9 is "4PM" on site -> We force it to "5PM"
 const GAMES = [
     { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
     { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
     { id: '13', name: 'Lotto 6/42' }, { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
-    { id: '8', name: '3D Lotto 11AM' }, { id: '9', name: '3D Lotto 4PM' }, { id: '10', name: '3D Lotto 9PM' },
-    { id: '15', name: '2D Lotto 11AM' }, { id: '16', name: '2D Lotto 4PM' }, { id: '11', name: '2D Lotto 9PM' }
+    { id: '8', name: '3D Lotto 2PM' },  // FORCED RENAME
+    { id: '9', name: '3D Lotto 5PM' },  // FORCED RENAME
+    { id: '10', name: '3D Lotto 9PM' },
+    { id: '15', name: '2D Lotto 2PM' }, // FORCED RENAME
+    { id: '16', name: '2D Lotto 5PM' }, // FORCED RENAME
+    { id: '11', name: '2D Lotto 9PM' }
 ];
 
 async function fetchExistingData(url) {
@@ -39,10 +46,43 @@ async function fetchExistingData(url) {
     const initialCount = currentData.length;
     console.log(`💾 Loaded ${initialCount} existing entries.`);
 
-    // FAILSAFE: Don't run if we couldn't load the database
     if (initialCount === 0) {
-        console.error("❌ FAILSAFE: No data loaded. Aborting to prevent overwrite.");
+        console.error("❌ FAILSAFE: No data loaded. Aborting.");
         return;
+    }
+
+    // ==========================================
+    // AUTO-MIGRATION: RENAME OLD LABELS
+    // ==========================================
+    let migrationCount = 0;
+    currentData.forEach(item => {
+        // Rename 11AM -> 2PM
+        if (item.game.includes('11AM')) {
+            item.game = item.game.replace('11AM', '2PM');
+            migrationCount++;
+        }
+        // Rename 4PM -> 5PM
+        if (item.game.includes('4PM')) {
+            item.game = item.game.replace('4PM', '5PM');
+            migrationCount++;
+        }
+    });
+
+    // De-duplicate after renaming (just in case)
+    if (migrationCount > 0) {
+        console.log(`🔄 MIGRATION: Renamed ${migrationCount} entries to new time labels.`);
+        
+        const uniqueMap = new Map();
+        currentData.forEach(item => {
+            const key = `${item.date}-${item.game}-${item.combination}`;
+            // Keep the item if not seen, or update if new one has better prize info
+            if (!uniqueMap.has(key) || (item.prize && item.prize !== '₱ TBA')) {
+                uniqueMap.set(key, item);
+            }
+        });
+        
+        currentData = Array.from(uniqueMap.values());
+        console.log(`💾 Merged duplicates. New size: ${currentData.length}.`);
     }
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
@@ -58,12 +98,10 @@ async function fetchExistingData(url) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     
     let newCount = 0;
-    let updateCount = 0; // Track updates too
 
     try {
         await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-        // LAST 3 DAYS LOGIC
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
@@ -99,7 +137,7 @@ async function fetchExistingData(url) {
                     table.querySelectorAll('tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
-                            const game = correctName;
+                            const game = correctName; // FORCE NAME
                             const combo = cells[1].innerText.trim();
                             const dateStr = cells[2].innerText.trim();
                             const prize = cells[3].innerText.trim();
@@ -122,22 +160,18 @@ async function fetchExistingData(url) {
                     );
 
                     if (existingIndex === -1) {
-                        // It's NEW
                         currentData.push(item);
                         newCount++;
                         console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
                     } else {
-                        // It EXISTS, check if we need to UPDATE (Fix TBA)
                         const existingItem = currentData[existingIndex];
                         if (existingItem.prize === '₱ TBA' || existingItem.winners === 'TBA') {
-                            // Replace with full data
                             currentData[existingIndex] = item; 
-                            updateCount++;
                             console.log(`\n   🔄 UPDATED: ${item.game} - ${item.combination}`);
                         }
                     }
                 });
-                process.stdout.write(`✅ Done\n`); // Keep log clean
+                process.stdout.write(`✅ Done\n`);
             } catch (e) {
                 console.log(`❌ Error\n`);
             }
@@ -149,7 +183,7 @@ async function fetchExistingData(url) {
         });
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Done! Added: ${newCount}, Updated: ${updateCount}`);
+        console.log(`💾 Done! Added: ${newCount}, Migrated: ${migrationCount}`);
 
     } catch (error) {
         console.error("❌ Error:", error.message);
