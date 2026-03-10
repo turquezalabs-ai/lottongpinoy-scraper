@@ -14,20 +14,16 @@ const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==========================================
-// 1. FORCE CORRECT NAMES (The Source of Truth)
+// 1. FORCE CORRECT NAMES
 // ==========================================
-// We force the names to match the new standard: 2PM, 5PM, 9PM.
-// Even if PCSO website structure changes, these names are used.
 const GAMES = [
     { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
     { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
     { id: '13', name: 'Lotto 6/42' }, { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
     
-    // --- DIGIT GAMES FORCED MAPPING ---
-    // ID 8 is "11AM" on PCSO -> We force it to "2PM"
+    // FORCED MAPPING
     { id: '8', name: '3D Lotto 2PM' }, 
-    // ID 9 is "4PM" on PCSO -> We force it to "5PM"
     { id: '9', name: '3D Lotto 5PM' }, 
     { id: '10', name: '3D Lotto 9PM' },
     
@@ -59,21 +55,14 @@ async function fetchExistingData(url) {
     }
 
     // ==========================================
-    // 2. AUTO-MIGRATION: Fix Old Data
+    // 2. AUTO-MIGRATION: Fix Old Labels
     // ==========================================
-    // This runs every time to ensure all old "11AM" entries become "2PM"
     let migrationCount = 0;
     currentData.forEach(item => {
         const originalGame = item.game;
         
-        // Replace 11AM -> 2PM
-        if (item.game.includes('11AM')) {
-            item.game = item.game.replace('11AM', '2PM');
-        }
-        // Replace 4PM -> 5PM
-        if (item.game.includes('4PM')) {
-            item.game = item.game.replace('4PM', '5PM');
-        }
+        if (item.game.includes('11AM')) item.game = item.game.replace('11AM', '2PM');
+        if (item.game.includes('4PM')) item.game = item.game.replace('4PM', '5PM');
 
         if (originalGame !== item.game) migrationCount++;
     });
@@ -81,11 +70,9 @@ async function fetchExistingData(url) {
     if (migrationCount > 0) {
         console.log(`🔄 MIGRATION: Fixed ${migrationCount} entries (11AM->2PM, 4PM->5PM).`);
         
-        // De-duplicate after renaming
         const uniqueMap = new Map();
         currentData.forEach(item => {
             const key = `${item.date}-${item.game}-${item.combination}`;
-            // Keep the version with Prize info if possible
             if (!uniqueMap.has(key) || (item.prize && item.prize !== '₱ TBA')) {
                 uniqueMap.set(key, item);
             }
@@ -125,7 +112,6 @@ async function fetchExistingData(url) {
         const fromDay = past.getDate().toString();
 
         for (const game of GAMES) {
-            // Use the FORCED name from our list
             process.stdout.write(`🔍 ${game.name}... `);
             try {
                 await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
@@ -140,7 +126,6 @@ async function fetchExistingData(url) {
                 await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
                 await wait(3000);
 
-                // Pass the FORCED name into the browser
                 const results = await page.evaluate((correctName) => {
                     const items = [];
                     const table = document.querySelector('#cphContainer_cpContent_GridView1');
@@ -148,7 +133,7 @@ async function fetchExistingData(url) {
                     table.querySelectorAll('tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
-                            const game = correctName; // USE THE FORCED NAME
+                            const game = correctName;
                             const combo = cells[1].innerText.trim();
                             const dateStr = cells[2].innerText.trim();
                             const prize = cells[3].innerText.trim();
@@ -175,9 +160,11 @@ async function fetchExistingData(url) {
                         newCount++;
                         console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
                     } else {
-                        // Update if we have TBA
+                        // Update if we have TBA or if new data has valid prize
                         const existingItem = currentData[existingIndex];
-                        if (existingItem.prize === '₱ TBA' || existingItem.winners === 'TBA') {
+                        const hasBetterPrize = item.prize !== '₱ ' && item.prize !== '₱ 0' && item.prize !== '₱ 0.00';
+                        
+                        if (existingItem.prize === '₱ TBA' || hasBetterPrize) {
                             currentData[existingIndex] = item; 
                             console.log(`\n   🔄 UPDATED: ${item.game} - ${item.combination}`);
                         }
@@ -193,6 +180,30 @@ async function fetchExistingData(url) {
             const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); };
             return getTs(b.date) - getTs(a.date);
         });
+
+        // ==========================================
+        // AGGRESSIVE DATA CLEANUP (FINAL FIX)
+        // ==========================================
+        currentData.forEach(item => {
+            // 1. Identify Broken Prizes
+            const badPrize = !item.prize || item.prize.includes('0') || item.prize.trim() === '' || item.prize === '₱';
+
+            // 2. FORCE FIXED PRIZES FOR DIGIT GAMES
+            if (item.game.includes('3D Lotto')) {
+                item.prize = '₱ 4,500.00'; // Force correct 3D prize
+            } else if (item.game.includes('2D Lotto')) {
+                item.prize = '₱ 4,000.00'; // Force correct 2D prize
+            } else if (badPrize) {
+                // If Major game has bad prize, set to TBA (Jackpot varies)
+                item.prize = '₱ TBA';
+            }
+
+            // 3. FIX WINNERS
+            if (!item.winners || item.winners.trim() === '') {
+                item.winners = 'TBA';
+            }
+        });
+        console.log("🛠️ Fixed Data Prizes (3D:4500, 2D:4000, Fix 0/TBA).");
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
         console.log(`💾 Done! Added: ${newCount}, Migrated: ${migrationCount}`);
