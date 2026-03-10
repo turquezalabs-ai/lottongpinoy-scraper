@@ -17,7 +17,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // 1. FORCE CORRECT NAMES
 // ==========================================
 const GAMES = [
-    { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
+    { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name:Grand Lotto 6/55' },
     { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
     { id: '13', name: 'Lotto 6/42' }, { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
@@ -40,6 +40,41 @@ async function fetchExistingData(url) {
             res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve([]); }});
         }).on('error', () => resolve([]));
     });
+}
+
+// ==========================================
+// SMART CLEANUP FUNCTION
+// ==========================================
+function cleanItem(item) {
+    // 1. Normalize Prize strings (remove K, etc)
+    let prize = item.prize.replace('₱', '').trim();
+    
+    // 2. FIX FIXED PRIZES (2D/3D)
+    if (item.game.includes('3D Lotto')) {
+        item.prize = '₱ 4,500.00';
+        return; // Stop here, force value
+    }
+    if (item.game.includes('2D Lotto')) {
+        item.prize = '₱ 4,000.00';
+        return; // Stop here, force value
+    }
+
+    // 3. FIX MAJOR GAMES (6/58, 6D, 4D, etc)
+    // If prize is 0, 0.00, empty, or "TBA" -> Set to TBA (We don't know the Jackpot)
+    const isZero = prize === '0' || prize === '0.00';
+    const isEmpty = !prize || prize === '';
+    
+    if (isZero || isEmpty) {
+        item.prize = '₱ TBA';
+    } else {
+        // Restore peso sign
+        item.prize = `₱ ${prize}`;
+    }
+
+    // 4. FIX WINNERS
+    if (!item.winners || item.winners === '0' || item.winners.trim() === '') {
+        item.winners = 'TBA';
+    }
 }
 
 (async () => {
@@ -73,7 +108,8 @@ async function fetchExistingData(url) {
         const uniqueMap = new Map();
         currentData.forEach(item => {
             const key = `${item.date}-${item.game}-${item.combination}`;
-            if (!uniqueMap.has(key) || (item.prize && item.prize !== '₱ TBA')) {
+            // Prefer the one with good prize data
+            if (!uniqueMap.has(key) || (item.prize && !item.prize.includes('TBA'))) {
                 uniqueMap.set(key, item);
             }
         });
@@ -156,17 +192,23 @@ async function fetchExistingData(url) {
                     );
 
                     if (existingIndex === -1) {
+                        // NEW ITEM: Clean it before adding
+                        cleanItem(item);
                         currentData.push(item);
                         newCount++;
                         console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
                     } else {
-                        // Update if we have TBA or if new data has valid prize
-                        const existingItem = currentData[existingIndex];
-                        const hasBetterPrize = item.prize !== '₱ ' && item.prize !== '₱ 0' && item.prize !== '₱ 0.00';
+                        // EXISTING ITEM: Clean the incoming data
+                        cleanItem(item);
                         
-                        if (existingItem.prize === '₱ TBA' || hasBetterPrize) {
-                            currentData[existingIndex] = item; 
-                            console.log(`\n   🔄 UPDATED: ${item.game} - ${item.combination}`);
+                        // Update if our new data is better
+                        const existingItem = currentData[existingIndex];
+                        const isBetterPrize = item.prize !== '₱ TBA' && existingItem.prize === '₱ TBA';
+                        const isBetterWinner = item.winners !== 'TBA' && existingItem.winners === 'TBA';
+
+                        if (isBetterPrize || isBetterWinner) {
+                             currentData[existingIndex] = item; 
+                             console.log(`\n   🔄 UPDATED: ${item.game}`);
                         }
                     }
                 });
@@ -182,28 +224,16 @@ async function fetchExistingData(url) {
         });
 
         // ==========================================
-        // AGGRESSIVE DATA CLEANUP (FINAL FIX)
+        // FINAL GLOBAL CLEANUP (Safety Pass)
         // ==========================================
+        console.log("🛠️ Running Final Data Sanitization...");
+        let fixCount = 0;
         currentData.forEach(item => {
-            // 1. Identify Broken Prizes
-            const badPrize = !item.prize || item.prize.includes('0') || item.prize.trim() === '' || item.prize === '₱';
-
-            // 2. FORCE FIXED PRIZES FOR DIGIT GAMES
-            if (item.game.includes('3D Lotto')) {
-                item.prize = '₱ 4,500.00'; // Force correct 3D prize
-            } else if (item.game.includes('2D Lotto')) {
-                item.prize = '₱ 4,000.00'; // Force correct 2D prize
-            } else if (badPrize) {
-                // If Major game has bad prize, set to TBA (Jackpot varies)
-                item.prize = '₱ TBA';
-            }
-
-            // 3. FIX WINNERS
-            if (!item.winners || item.winners.trim() === '') {
-                item.winners = 'TBA';
-            }
+            const oldPrize = item.prize;
+            cleanItem(item);
+            if (oldPrize !== item.prize) fixCount++;
         });
-        console.log("🛠️ Fixed Data Prizes (3D:4500, 2D:4000, Fix 0/TBA).");
+        if (fixCount > 0) console.log(`🛠️ Fixed ${fixCount} prize formatting issues.`);
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
         console.log(`💾 Done! Added: ${newCount}, Migrated: ${migrationCount}`);
