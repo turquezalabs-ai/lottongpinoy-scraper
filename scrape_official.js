@@ -13,19 +13,26 @@ const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
 const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- FORCE NEW LABELS ---
-// ID 8 is "11AM" on site -> We force it to "2PM"
-// ID 9 is "4PM" on site -> We force it to "5PM"
+// ==========================================
+// 1. FORCE CORRECT NAMES (The Source of Truth)
+// ==========================================
+// We force the names to match the new standard: 2PM, 5PM, 9PM.
+// Even if PCSO website structure changes, these names are used.
 const GAMES = [
     { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
     { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
     { id: '13', name: 'Lotto 6/42' }, { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
-    { id: '8', name: '3D Lotto 2PM' },  // FORCED RENAME
-    { id: '9', name: '3D Lotto 5PM' },  // FORCED RENAME
+    
+    // --- DIGIT GAMES FORCED MAPPING ---
+    // ID 8 is "11AM" on PCSO -> We force it to "2PM"
+    { id: '8', name: '3D Lotto 2PM' }, 
+    // ID 9 is "4PM" on PCSO -> We force it to "5PM"
+    { id: '9', name: '3D Lotto 5PM' }, 
     { id: '10', name: '3D Lotto 9PM' },
-    { id: '15', name: '2D Lotto 2PM' }, // FORCED RENAME
-    { id: '16', name: '2D Lotto 5PM' }, // FORCED RENAME
+    
+    { id: '15', name: '2D Lotto 2PM' }, 
+    { id: '16', name: '2D Lotto 5PM' }, 
     { id: '11', name: '2D Lotto 9PM' }
 ];
 
@@ -52,35 +59,37 @@ async function fetchExistingData(url) {
     }
 
     // ==========================================
-    // AUTO-MIGRATION: RENAME OLD LABELS
+    // 2. AUTO-MIGRATION: Fix Old Data
     // ==========================================
+    // This runs every time to ensure all old "11AM" entries become "2PM"
     let migrationCount = 0;
     currentData.forEach(item => {
-        // Rename 11AM -> 2PM
+        const originalGame = item.game;
+        
+        // Replace 11AM -> 2PM
         if (item.game.includes('11AM')) {
             item.game = item.game.replace('11AM', '2PM');
-            migrationCount++;
         }
-        // Rename 4PM -> 5PM
+        // Replace 4PM -> 5PM
         if (item.game.includes('4PM')) {
             item.game = item.game.replace('4PM', '5PM');
-            migrationCount++;
         }
+
+        if (originalGame !== item.game) migrationCount++;
     });
 
-    // De-duplicate after renaming (just in case)
     if (migrationCount > 0) {
-        console.log(`🔄 MIGRATION: Renamed ${migrationCount} entries to new time labels.`);
+        console.log(`🔄 MIGRATION: Fixed ${migrationCount} entries (11AM->2PM, 4PM->5PM).`);
         
+        // De-duplicate after renaming
         const uniqueMap = new Map();
         currentData.forEach(item => {
             const key = `${item.date}-${item.game}-${item.combination}`;
-            // Keep the item if not seen, or update if new one has better prize info
+            // Keep the version with Prize info if possible
             if (!uniqueMap.has(key) || (item.prize && item.prize !== '₱ TBA')) {
                 uniqueMap.set(key, item);
             }
         });
-        
         currentData = Array.from(uniqueMap.values());
         console.log(`💾 Merged duplicates. New size: ${currentData.length}.`);
     }
@@ -116,6 +125,7 @@ async function fetchExistingData(url) {
         const fromDay = past.getDate().toString();
 
         for (const game of GAMES) {
+            // Use the FORCED name from our list
             process.stdout.write(`🔍 ${game.name}... `);
             try {
                 await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
@@ -130,6 +140,7 @@ async function fetchExistingData(url) {
                 await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
                 await wait(3000);
 
+                // Pass the FORCED name into the browser
                 const results = await page.evaluate((correctName) => {
                     const items = [];
                     const table = document.querySelector('#cphContainer_cpContent_GridView1');
@@ -137,7 +148,7 @@ async function fetchExistingData(url) {
                     table.querySelectorAll('tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
-                            const game = correctName; // FORCE NAME
+                            const game = correctName; // USE THE FORCED NAME
                             const combo = cells[1].innerText.trim();
                             const dateStr = cells[2].innerText.trim();
                             const prize = cells[3].innerText.trim();
@@ -151,7 +162,7 @@ async function fetchExistingData(url) {
                     return items;
                 }, game.name);
 
-                // --- UPDATED MERGE LOGIC ---
+                // --- MERGE LOGIC ---
                 results.forEach(item => {
                     const existingIndex = currentData.findIndex(i => 
                         i.date === item.date && 
@@ -164,6 +175,7 @@ async function fetchExistingData(url) {
                         newCount++;
                         console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
                     } else {
+                        // Update if we have TBA
                         const existingItem = currentData[existingIndex];
                         if (existingItem.prize === '₱ TBA' || existingItem.winners === 'TBA') {
                             currentData[existingIndex] = item; 
@@ -171,7 +183,7 @@ async function fetchExistingData(url) {
                         }
                     }
                 });
-                process.stdout.write(`✅ Done\n`);
+                process.stdout.write(`✅\n`);
             } catch (e) {
                 console.log(`❌ Error\n`);
             }
