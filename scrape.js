@@ -76,7 +76,7 @@ const SAFETY_THRESHOLD = 5000;
                 
                 let gameName = th.innerText.trim();
                 
-                // 1. NORMALIZE NAMES FIRST (So the filter works)
+                // 1. NORMALIZE NAMES FIRST
                 if (gameName.includes('Swertres')) gameName = '3D Lotto';
                 if (gameName.includes('EZ2')) gameName = '2D Lotto';
 
@@ -110,7 +110,7 @@ const SAFETY_THRESHOLD = 5000;
                     // Convert "2:00 PM" -> "2PM"
                     let normalizedTime = timeRaw.replace(':00', '').replace(' ', '');
 
-                                        const finalGame = `${gameName} ${normalizedTime}`;
+                    const finalGame = `${gameName} ${normalizedTime}`;
 
                     // --- SET FIXED PRIZES ---
                     let defaultPrize = '₱ TBA';
@@ -124,7 +124,7 @@ const SAFETY_THRESHOLD = 5000;
                         game: finalGame,
                         combination: numbers,
                         prize: defaultPrize,
-                        winners: 'TBA', // Winners remain TBA until official scrape
+                        winners: 'TBA',
                         date: dateFormatted
                     });
                 });
