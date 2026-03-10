@@ -1,3 +1,70 @@
+// scrape.js
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const fs = require('fs');
+const path = require('path');
+
+puppeteer.use(StealthPlugin());
+
+const OUTPUT_DIR = 'data';
+const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
+const TARGET_URL = 'https://www.lottopcso.com/';
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const SAFETY_THRESHOLD = 5000;
+
+(async () => {
+    console.log("⚡ REAL-TIME SCRAPER STARTED");
+    
+    let currentData = [];
+    
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+
+    if (fs.existsSync(OUTPUT_FILE)) {
+        try {
+            const rawData = fs.readFileSync(OUTPUT_FILE);
+            currentData = JSON.parse(rawData);
+            console.log(`💾 Loaded ${currentData.length} entries from Local Repo.`);
+        } catch (e) {
+            console.log("⚠️ Error reading local file. Starting fresh.");
+            currentData = [];
+        }
+    } else {
+        console.log("⚠️ No local data file found. Starting fresh.");
+    }
+
+    const initialCount = currentData.length;
+
+    // FAILSAFE
+    if (initialCount > 0 && initialCount < SAFETY_THRESHOLD) {
+        console.error(`❌ FAILSAFE TRIGGERED: Database size is ${initialCount}.`);
+        console.error("❌ Restore backup.");
+        process.exit(1); 
+    }
+    if (initialCount === 0) console.warn("⚠️ WARNING: No data loaded.");
+
+    const browser = await puppeteer.launch({ 
+        headless: "new", 
+        executablePath: '/opt/google/chrome/chrome', 
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage' 
+        ]
+    });
+    
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1366, height: 768 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    let newCount = 0;
+
+    try {
+        console.log(`🌐 Navigating to ${TARGET_URL}`);
+        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await wait(4000);
+
         // --- HTML TABLE PARSER (No Time Mapping) ---
         const items = await page.evaluate(() => {
             const results = [];
@@ -9,7 +76,7 @@
                 
                 let gameName = th.innerText.trim();
                 
-                // 1. NORMALIZE NAMES FIRST (So the filter works for all aliases)
+                // 1. NORMALIZE NAMES FIRST (So the filter works)
                 if (gameName.includes('Swertres')) gameName = '3D Lotto';
                 if (gameName.includes('EZ2')) gameName = '2D Lotto';
 
@@ -55,5 +122,40 @@
                 });
             });
 
-            return items;
+            return results;
         });
+
+        console.log(`🔍 Found ${items.length} potential results.`);
+
+        items.forEach(item => {
+            const exists = currentData.some(i => 
+                i.date === item.date && 
+                i.game === item.game && 
+                i.combination === item.combination
+            );
+
+            if (!exists) {
+                currentData.push(item);
+                newCount++;
+                console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
+            }
+        });
+
+        currentData.sort((a, b) => {
+            const getTs = (str) => {
+                const parts = str.split('-');
+                return parseInt(parts[0]) * 10000 + parseInt(parts[1]) * 100 + parseInt(parts[2]);
+            };
+            return getTs(b.date) - getTs(a.date);
+        });
+
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+        console.log(`💾 Database updated. Size: ${currentData.length} entries. (New: ${newCount})`);
+
+    } catch (error) {
+        console.error("❌ Error:", error.message);
+        process.exit(1);
+    }
+
+    await browser.close();
+})();
