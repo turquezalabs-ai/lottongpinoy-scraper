@@ -11,147 +11,95 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
 const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ==========================================
-// 1. GAME DEFINITIONS
-// ==========================================
+// GAMES
 const GAMES = [
-    { id: '18', name: 'Ultra Lotto 6/58' }, 
-    { id: '17', name: 'Grand Lotto 6/55' },
-    { id: '1', name: 'Super Lotto 6/49' }, 
-    { id: '2', name: 'Mega Lotto 6/45' },
-    { id: '13', name: 'Lotto 6/42' }, 
-    { id: '5', name: '6D Lotto' },
+    { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
+    { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
+    { id: '13', name: 'Lotto 6/42' }, { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
-    
-    // FORCED MAPPING
-    { id: '8', name: '3D Lotto 2PM' }, 
-    { id: '9', name: '3D Lotto 5PM' }, 
-    { id: '10', name: '3D Lotto 9PM' },
-    
-    { id: '15', name: '2D Lotto 2PM' }, 
-    { id: '16', name: '2D Lotto 5PM' }, 
-    { id: '11', name: '2D Lotto 9PM' }
+    { id: '8', name: '3D Lotto 2PM' }, { id: '9', name: '3D Lotto 5PM' }, { id: '10', name: '3D Lotto 9PM' },
+    { id: '15', name: '2D Lotto 2PM' }, { id: '16', name: '2D Lotto 5PM' }, { id: '11', name: '2D Lotto 9PM' }
 ];
 
-// ==========================================
-// 2. CLEANUP FUNCTION (DEFINED GLOBALLY)
-// ==========================================
+// HELPER: Clean Data
 function cleanItem(item) {
-    // 1. FILTER GARBAGE (Headers)
+    // 1. DELETE GARBAGE (WinningCombination)
     if (item.combination.includes('Combination') || item.combination.includes('Winning') || !item.combination.match(/\d/)) {
-        item.delete = true; // Mark for deletion
-        return;
+        return false; // Mark for deletion
     }
 
-    // 2. Normalize Prize strings
+    // 2. FIX PRIZES
     let prize = item.prize.replace('₱', '').trim();
     
-    // 3. FORCE FIXED PRIZES (2D/3D)
     if (item.game.includes('3D Lotto')) {
-        item.prize = '₱ 4,500.00';
-        return;
+        item.prize = 'P 4,500';
+        return true;
     }
     if (item.game.includes('2D Lotto')) {
-        item.prize = '₱ 4,000.00';
-        return;
+        item.prize = 'P 4,000';
+        return true;
     }
 
-    // 4. FIX MAJOR GAMES
+    // Major Games
     const isZero = prize === '0' || prize === '0.00';
     const isEmpty = !prize || prize === '';
-    
-    if (isZero || isEmpty) {
-        item.prize = '₱ TBA';
-    } else {
-        item.prize = `₱ ${prize}`;
-    }
+    if (isZero || isEmpty) item.prize = '₱ TBA';
+    else item.prize = `₱ ${prize}`;
 
-    // 5. FIX WINNERS
-    if (!item.winners || item.winners === '0' || item.winners.trim() === '') {
-        item.winners = 'TBA';
-    }
+    // 3. FIX WINNERS
+    if (!item.winners || item.winners === '0' || item.winners.trim() === '') item.winners = 'TBA';
+
+    return true;
 }
 
-// ==========================================
-// 3. MAIN SCRIPT
-// ==========================================
 (async () => {
-    console.log("🏛️ Starting OFFICIAL PCSO Scraper...");
+    console.log("🏛️ OFFICIAL SCRAPER STARTED");
     
-    // 1. Load from Local Repo
+    // 1. LOAD LOCAL
     let currentData = [];
-    
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-
     if (fs.existsSync(OUTPUT_FILE)) {
         try {
             const rawData = fs.readFileSync(OUTPUT_FILE);
             currentData = JSON.parse(rawData);
-            console.log(`💾 Loaded ${currentData.length} entries from Local Repo.`);
-        } catch (e) {
-            console.log("⚠️ Error reading local file. Starting fresh.");
-            currentData = [];
-        }
-    } else {
-        console.log("⚠️ No local data file found.");
+            console.log(`💾 Loaded ${currentData.length} entries.`);
+        } catch (e) { console.log("⚠️ Error reading file."); currentData = []; }
     }
 
-    // CLEAN EXISTING DATA IMMEDIATELY
-    console.log("🛠️ Pre-cleaning existing data...");
-    currentData.forEach(item => cleanItem(item));
-    
-    // REMOVE GARBAGE ENTRIES
+    // 2. CLEAN EXISTING DATA (Remove WinningCombination)
     const oldSize = currentData.length;
-    currentData = currentData.filter(item => !item.delete);
-    if (currentData.length < oldSize) {
-        console.log(`🗑️ Removed ${oldSize - currentData.length} garbage entries.`);
-    }
+    currentData = currentData.filter(item => cleanItem(item));
+    if (currentData.length < oldSize) console.log(`🗑️ Removed ${oldSize - currentData.length} garbage entries.`);
 
-    const initialCount = currentData.length;
-
-    // 2. AUTO-MIGRATION (11AM -> 2PM)
-    let migrationCount = 0;
+    // 3. MIGRATION (Fix Time Labels)
     currentData.forEach(item => {
-        const originalGame = item.game;
         if (item.game.includes('11AM')) item.game = item.game.replace('11AM', '2PM');
         if (item.game.includes('4PM')) item.game = item.game.replace('4PM', '5PM');
-        if (originalGame !== item.game) migrationCount++;
     });
 
-    if (migrationCount > 0) {
-        console.log(`🔄 MIGRATION: Fixed ${migrationCount} entries.`);
-        const uniqueMap = new Map();
-        currentData.forEach(item => {
-            const key = `${item.date}-${item.game}-${item.combination}`;
-            if (!uniqueMap.has(key) || (item.prize && !item.prize.includes('TBA'))) {
-                uniqueMap.set(key, item);
-            }
-        });
-        currentData = Array.from(uniqueMap.values());
-        console.log(`💾 Merged duplicates. New size: ${currentData.length}.`);
-    }
+    // Deduplicate
+    const map = new Map();
+    currentData.forEach(item => {
+        const key = `${item.date}-${item.game}-${item.combination}`;
+        if (!map.has(key) || (item.prize && !item.prize.includes('TBA'))) map.set(key, item);
+    });
+    currentData = Array.from(map.values());
+    console.log(`💾 Cleaned size: ${currentData.length}.`);
 
+    // 4. SCRAPE
     const browser = await puppeteer.launch({ 
         headless: true,
         executablePath: '/opt/google/chrome/chrome', 
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
-    
     const page = await browser.newPage();
-    await page.setViewport({ width: 1366, height: 768 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     
     let newCount = 0;
 
     try {
         await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-        try {
-            await page.waitForSelector('#cphContainer_cpContent_ddlStartMonth', { timeout: 10000 });
-        } catch (e) {
-            console.log("⚠️ Dropdown not found, retrying...");
-            await wait(5000);
-        }
+        await page.waitForSelector('#cphContainer_cpContent_ddlStartMonth', { timeout: 10000 });
 
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -179,7 +127,7 @@ function cleanItem(item) {
 
                 await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
                 await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
-                await wait(4000); 
+                await wait(4000);
 
                 const results = await page.evaluate((correctName) => {
                     const items = [];
@@ -188,72 +136,55 @@ function cleanItem(item) {
                     table.querySelectorAll('tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
-                            const game = correctName;
-                            const combo = cells[1].innerText.trim();
-                            const dateStr = cells[2].innerText.trim();
-                            const prize = cells[3].innerText.trim();
-                            const winners = cells[4].innerText.trim();
-                            let dateFormatted = dateStr;
-                            const parts = dateStr.split('/');
-                            if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-                            items.push({ date: dateFormatted, game, combination: combo, prize: `₱ ${prize}`, winners });
+                            items.push({
+                                game: correctName,
+                                combination: cells[1].innerText.trim(),
+                                date: cells[2].innerText.trim(),
+                                prize: cells[3].innerText.trim(),
+                                winners: cells[4].innerText.trim()
+                            });
                         }
                     });
                     return items;
                 }, game.name);
 
-                // --- MERGE LOGIC ---
                 results.forEach(item => {
-                    // Run cleanup first
-                    cleanItem(item);
+                    // Format Date
+                    const parts = item.date.split('/');
+                    if (parts.length === 3) item.date = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+                    item.prize = `₱ ${item.prize}`;
+
+                    // Clean and Check if valid
+                    if (!cleanItem(item)) return; // Skip garbage
+
+                    const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
                     
-                    // Skip if marked for deletion
-                    if (item.delete) return;
-
-                    const existingIndex = currentData.findIndex(i => 
-                        i.date === item.date && 
-                        i.game === item.game && 
-                        i.combination === item.combination
-                    );
-
-                    if (existingIndex === -1) {
+                    if (idx === -1) {
                         currentData.push(item);
                         newCount++;
-                        console.log(`\n   ✅ NEW: ${item.game} - ${item.combination}`);
+                        console.log(`\n   ✅ NEW: ${item.game}`);
                     } else {
-                        const existingItem = currentData[existingIndex];
-                        const isBetterPrize = item.prize !== '₱ TBA' && existingItem.prize === '₱ TBA';
-                        const isBetterWinner = item.winners !== 'TBA' && existingItem.winners === 'TBA';
-
-                        if (isBetterPrize || isBetterWinner) {
-                             currentData[existingIndex] = item; 
-                             console.log(`\n   🔄 UPDATED: ${item.game}`);
+                        const old = currentData[idx];
+                        if (old.prize === '₱ TBA' && item.prize !== '₱ TBA') {
+                            currentData[idx] = item;
+                            console.log(`\n   🔄 UPDATED Prize`);
                         }
                     }
                 });
                 process.stdout.write(`✅\n`);
-            } catch (e) {
-                console.log(`\n   ❌ Error: ${e.message}`);
-            }
+            } catch (e) { console.log(`\n   ❌ Error: ${e.message}`); }
         }
 
+        // Sort
         currentData.sort((a, b) => {
             const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); };
             return getTs(b.date) - getTs(a.date);
         });
 
-        // ==========================================
-        // FINAL GLOBAL CLEANUP (Just to be safe)
-        // ==========================================
-        currentData.forEach(item => cleanItem(item));
-        currentData = currentData.filter(item => !item.delete);
-
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Done! Added: ${newCount}, Migrated: ${migrationCount}`);
+        console.log(`💾 Done! Added: ${newCount}`);
 
-    } catch (error) {
-        console.error("❌ Error:", error.message);
-    }
+    } catch (error) { console.error("❌ Error:", error.message); }
 
     await browser.close();
 })();
