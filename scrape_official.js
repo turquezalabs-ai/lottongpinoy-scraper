@@ -35,59 +35,33 @@ const GAMES = [
     { id: '11', name: '2D Lotto 9PM' }
 ];
 
-async function fetchExistingData(url) {
-    return new Promise((resolve) => {
-        https.get(url, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve([]); }});
-        }).on('error', () => resolve([]));
-    });
-}
-
-// ==========================================
-// SMART CLEANUP FUNCTION
-// ==========================================
-function cleanItem(item) {
-    // 1. Normalize Prize strings (remove K, etc)
-    let prize = item.prize.replace('₱', '').trim();
-    
-    // 2. FIX FIXED PRIZES (2D/3D)
-    if (item.game.includes('3D Lotto')) {
-        item.prize = '₱ 4,500.00';
-        return; // Stop here
-    }
-    if (item.game.includes('2D Lotto')) {
-        item.prize = '₱ 4,000.00';
-        return; // Stop here
-    }
-
-    // 3. FIX MAJOR GAMES (6/58, 6D, 4D, etc)
-    const isZero = prize === '0' || prize === '0.00';
-    const isEmpty = !prize || prize === '';
-    
-    if (isZero || isEmpty) {
-        item.prize = '₱ TBA';
-    } else {
-        item.prize = `₱ ${prize}`;
-    }
-
-    // 4. FIX WINNERS
-    if (!item.winners || item.winners === '0' || item.winners.trim() === '') {
-        item.winners = 'TBA';
-    }
-}
-
 (async () => {
     console.log("🏛️ Starting OFFICIAL PCSO Scraper...");
     
-    let currentData = await fetchExistingData(LIVE_DATA_URL);
-    const initialCount = currentData.length;
-    console.log(`💾 Loaded ${initialCount} existing entries.`);
+    // 1. Read from Local Repo (Same as scrape.js)
+    let currentData = [];
+    
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
+    if (fs.existsSync(OUTPUT_FILE)) {
+        try {
+            const rawData = fs.readFileSync(OUTPUT_FILE);
+            currentData = JSON.parse(rawData);
+            console.log(`💾 Loaded ${currentData.length} entries from Local Repo.`);
+        } catch (e) {
+            console.log("⚠️ Error reading local file. Starting fresh.");
+            currentData = [];
+        }
+    } else {
+        console.log("⚠️ No local data file found. Starting fresh.");
+    }
+
+    const initialCount = currentData.length;
+
+    // 2. Safety Check (Relaxed for Official Scraper to allow rebuilding)
+    // If local is empty, we proceed, assuming we want to rebuild.
     if (initialCount === 0) {
-        console.error("❌ FAILSAFE: No data loaded. Aborting.");
-        return;
+        console.warn("⚠️ WARNING: Database is empty. Proceeding to scrape history...");
     }
 
     // ==========================================
