@@ -65,7 +65,7 @@ const SAFETY_THRESHOLD = 5000;
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await wait(4000);
 
-        // --- HTML TABLE PARSER (No Time Mapping) ---
+        // --- HTML TABLE PARSER ---
         const items = await page.evaluate(() => {
             const results = [];
             const tables = document.querySelectorAll('table.has-fixed-layout');
@@ -76,14 +76,15 @@ const SAFETY_THRESHOLD = 5000;
                 
                 let gameName = th.innerText.trim();
                 
-                // 1. NORMALIZE NAMES FIRST
+                // 1. NORMALIZE NAMES
                 if (gameName.includes('Swertres')) gameName = '3D Lotto';
                 if (gameName.includes('EZ2')) gameName = '2D Lotto';
 
-                // 2. FILTER STRATEGY: Only Real-Time scrape 2D and 3D.
-                // Skip 4D, 6D, and Major games.
-                if (!gameName.includes('2D Lotto') && !gameName.includes('3D Lotto')) {
-                    return; // Skip this table
+                // 2. STRICT WHITELIST
+                // Only scrape if EXACTLY "2D Lotto" or "3D Lotto".
+                // This prevents 6D, 4D, 6/55 etc from ever entering this scraper.
+                if (gameName !== '2D Lotto' && gameName !== '3D Lotto') {
+                    return; 
                 }
                 
                 const ths = table.querySelectorAll('thead th');
@@ -106,18 +107,15 @@ const SAFETY_THRESHOLD = 5000;
 
                     let timeRaw = col1; 
                     let numbers = col2.replace(/\s/g, '-');
-
-                    // Convert "2:00 PM" -> "2PM"
                     let normalizedTime = timeRaw.replace(':00', '').replace(' ', '');
-
                     const finalGame = `${gameName} ${normalizedTime}`;
 
-                    // --- SET FIXED PRIZES ---
+                    // --- SET FIXED PRIZES (Format: P X,XXX) ---
                     let defaultPrize = '₱ TBA';
-                    if (gameName.includes('3D Lotto')) {
-                        defaultPrize = '₱ 4,500.00';
-                    } else if (gameName.includes('2D Lotto')) {
-                        defaultPrize = '₱ 4,000.00';
+                    if (gameName === '3D Lotto') {
+                        defaultPrize = 'P 4,500';
+                    } else if (gameName === '2D Lotto') {
+                        defaultPrize = 'P 4,000';
                     }
 
                     results.push({
@@ -135,7 +133,7 @@ const SAFETY_THRESHOLD = 5000;
 
         console.log(`🔍 Found ${items.length} potential results.`);
 
-        // --- MERGE LOGIC (With Update Support) ---
+        // --- MERGE LOGIC ---
         items.forEach(item => {
             const existingIndex = currentData.findIndex(i => 
                 i.date === item.date && 
@@ -144,16 +142,15 @@ const SAFETY_THRESHOLD = 5000;
             );
 
             if (existingIndex === -1) {
-                // It's NEW
                 currentData.push(item);
                 newCount++;
                 console.log(`   ✅ NEW: ${item.game} - ${item.combination}`);
             } else {
-                // It EXISTS - Check if we need to update Prize (Fix TBA)
+                // Update if prize was TBA or wrong
                 const existingItem = currentData[existingIndex];
-                if (existingItem.prize === '₱ TBA' && item.prize !== '₱ TBA') {
+                if (existingItem.prize !== item.prize) {
                     currentData[existingIndex].prize = item.prize;
-                    console.log(`   🔄 FIXED PRIZE: ${item.game}`);
+                    console.log(`   🔄 FIXED PRIZE: ${item.game} -> ${item.prize}`);
                 }
             }
         });
