@@ -11,7 +11,6 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
 const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// OFFICIAL GAMES LIST (No STL for now)
 const GAMES = [
     { id: '18', name: 'Ultra Lotto 6/58' }, { id: '17', name: 'Grand Lotto 6/55' },
     { id: '1', name: 'Super Lotto 6/49' }, { id: '2', name: 'Mega Lotto 6/45' },
@@ -21,23 +20,10 @@ const GAMES = [
     { id: '15', name: '2D Lotto 2PM' }, { id: '16', name: '2D Lotto 5PM' }, { id: '11', name: '2D Lotto 9PM' }
 ];
 
-// HELPER: Clean Prize
-function fixPrize(game, prizeStr) {
-    let p = prizeStr.replace('₱', '').trim();
-    
-    // Fixed for Digit Games
-    if (game.includes('3D Lotto')) return 'P 4,500';
-    if (game.includes('2D Lotto')) return 'P 4,000';
-
-    // For Major Games
-    if (p === '0' || p === '0.00' || p === '') return '₱ TBA';
-    return `₱ ${p}`;
-}
-
 (async () => {
-    console.log("🏛️ OFFICIAL SCRAPER (Strict Mode)");
+    console.log("🏛️ OFFICIAL SCRAPER");
     
-    // 1. LOAD LOCAL
+    // 1. Load Local
     let currentData = [];
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
     if (fs.existsSync(OUTPUT_FILE)) {
@@ -45,35 +31,28 @@ function fixPrize(game, prizeStr) {
             const rawData = fs.readFileSync(OUTPUT_FILE);
             currentData = JSON.parse(rawData);
             console.log(`💾 Loaded ${currentData.length} entries.`);
-        } catch (e) { console.log("⚠️ Error reading file."); currentData = []; }
+        } catch (e) { currentData = []; }
     }
 
-    // 2. CLEAN EXISTING (Remove garbage headers)
-    const oldSize = currentData.length;
-    currentData = currentData.filter(item => {
-        // Delete if combination is text (e.g. "WinningCombination")
-        if (item.combination && !item.combination.match(/\d/)) return false;
-        // Delete if prize is strictly "0"
-        if (item.prize === '₱ 0' || item.prize === '₱ 0.00') item.prize = '₱ TBA';
-        return true;
-    });
-    if (currentData.length < oldSize) console.log(`🗑️ Removed ${oldSize - currentData.length} garbage entries.`);
+    // 2. Clean "WinningCombination" (One-Time Fix)
+    const before = currentData.length;
+    currentData = currentData.filter(i => i.combination && i.combination.match(/\d/)); // Keep only if numbers exist
+    if (currentData.length < before) console.log(`🧹 Removed ${before - currentData.length} bad entries.`);
 
-    // 3. MIGRATION (Fix Labels)
-    currentData.forEach(item => {
-        if (item.game.includes('11AM')) item.game = item.game.replace('11AM', '2PM');
-        if (item.game.includes('4PM')) item.game = item.game.replace('4PM', '5PM');
+    // 3. Migrate Labels
+    currentData.forEach(i => {
+        if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
+        if (i.game.includes('4PM')) i.game = i.game.replace('4PM', '5PM');
+        if (i.game.includes('3D Lotto')) i.prize = 'P 4,500';
+        if (i.game.includes('2D Lotto')) i.prize = 'P 4,000';
     });
 
-    // Deduplicate
+    // 4. Deduplicate
     const map = new Map();
-    currentData.forEach(item => {
-        const key = `${item.date}-${item.game}-${item.combination}`;
-        if (!map.has(key) || (item.prize && !item.prize.includes('TBA'))) map.set(key, item);
-    });
+    currentData.forEach(i => map.set(`${i.date}-${i.game}-${i.combination}`, i));
     currentData = Array.from(map.values());
 
-    // 4. SCRAPE
+    // 5. Launch Browser
     const browser = await puppeteer.launch({ 
         headless: true,
         executablePath: '/opt/google/chrome/chrome', 
@@ -125,9 +104,8 @@ function fixPrize(game, prizeStr) {
                         if (cells.length >= 5) {
                             const combo = cells[1].innerText.trim();
                             
-                            // STRICT FILTER: Combination MUST contain numbers.
-                            // This deletes "WinningCombination" headers automatically.
-                            if (!combo.match(/\d/)) return;
+                            // STRICT: Skip text headers like "WinningCombination"
+                            if (!combo.match(/\d/)) return; 
 
                             const dateStr = cells[2].innerText.trim();
                             let dateFormatted = dateStr;
@@ -147,22 +125,26 @@ function fixPrize(game, prizeStr) {
                 }, game.name);
 
                 results.forEach(item => {
-                    item.prize = fixPrize(item.game, item.prize);
-                    
+                    // Fix Prize
+                    if (item.game.includes('3D Lotto')) item.prize = 'P 4,500';
+                    else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000';
+                    else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
+                    else item.prize = `₱ ${item.prize}`;
+
+                    // Fix Winners
+                    if (!item.winners || item.winners === '0') item.winners = 'TBA';
+
                     const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
                     
                     if (idx === -1) {
                         currentData.push(item);
                         newCount++;
-                        console.log(`\n   ✅ NEW: ${item.game}`);
+                        console.log(`\n   ✅ NEW`);
                     } else {
-                        // Update if we have TBA in DB
-                        if (currentData[idx].prize === '₱ TBA' || currentData[idx].prize === 'P 4,500' || currentData[idx].prize === 'P 4,000') {
-                           // Check if new data is better
-                           if (item.prize !== '₱ TBA') {
-                               currentData[idx] = item;
-                               console.log(`\n   🔄 UPDATED Prize`);
-                           }
+                        // Update if TBA
+                        if (currentData[idx].prize === '₱ TBA' && item.prize !== '₱ TBA') {
+                            currentData[idx] = item;
+                            console.log(`\n   🔄 Updated Prize`);
                         }
                     }
                 });
@@ -170,7 +152,6 @@ function fixPrize(game, prizeStr) {
             } catch (e) { console.log(`\n   ❌ Error: ${e.message}`); }
         }
 
-        // Sort & Save
         currentData.sort((a, b) => {
             const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); };
             return getTs(b.date) - getTs(a.date);
