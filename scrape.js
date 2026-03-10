@@ -110,13 +110,21 @@ const SAFETY_THRESHOLD = 5000;
                     // Convert "2:00 PM" -> "2PM"
                     let normalizedTime = timeRaw.replace(':00', '').replace(' ', '');
 
-                    const finalGame = `${gameName} ${normalizedTime}`;
+                                        const finalGame = `${gameName} ${normalizedTime}`;
+
+                    // --- SET FIXED PRIZES ---
+                    let defaultPrize = '₱ TBA';
+                    if (gameName.includes('3D Lotto')) {
+                        defaultPrize = '₱ 4,500.00';
+                    } else if (gameName.includes('2D Lotto')) {
+                        defaultPrize = '₱ 4,000.00';
+                    }
 
                     results.push({
                         game: finalGame,
                         combination: numbers,
-                        prize: '₱ TBA',
-                        winners: 'TBA',
+                        prize: defaultPrize,
+                        winners: 'TBA', // Winners remain TBA until official scrape
                         date: dateFormatted
                     });
                 });
