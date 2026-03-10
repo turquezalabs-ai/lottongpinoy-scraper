@@ -3,18 +3,16 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 
 puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'results.json');
-const LIVE_DATA_URL = 'https://lottong-pinoy.com/results.json';
 const PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==========================================
-// 1. FORCE CORRECT NAMES
+// 1. GAME DEFINITIONS
 // ==========================================
 const GAMES = [
     { id: '18', name: 'Ultra Lotto 6/58' }, 
@@ -25,7 +23,7 @@ const GAMES = [
     { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
     
-    // FORCED MAPPING
+    // FORCED MAPPING (11AM->2PM, 4PM->5PM)
     { id: '8', name: '3D Lotto 2PM' }, 
     { id: '9', name: '3D Lotto 5PM' }, 
     { id: '10', name: '3D Lotto 9PM' },
@@ -35,10 +33,46 @@ const GAMES = [
     { id: '11', name: '2D Lotto 9PM' }
 ];
 
+// ==========================================
+// 2. CLEANUP FUNCTION (DEFINED GLOBALLY)
+// ==========================================
+function cleanItem(item) {
+    // 1. Normalize Prize strings
+    let prize = item.prize.replace('₱', '').trim();
+    
+    // 2. FORCE FIXED PRIZES (2D/3D)
+    if (item.game.includes('3D Lotto')) {
+        item.prize = '₱ 4,500.00';
+        return;
+    }
+    if (item.game.includes('2D Lotto')) {
+        item.prize = '₱ 4,000.00';
+        return;
+    }
+
+    // 3. FIX MAJOR GAMES
+    const isZero = prize === '0' || prize === '0.00';
+    const isEmpty = !prize || prize === '';
+    
+    if (isZero || isEmpty) {
+        item.prize = '₱ TBA';
+    } else {
+        item.prize = `₱ ${prize}`;
+    }
+
+    // 4. FIX WINNERS
+    if (!item.winners || item.winners === '0' || item.winners.trim() === '') {
+        item.winners = 'TBA';
+    }
+}
+
+// ==========================================
+// 3. MAIN SCRIPT
+// ==========================================
 (async () => {
     console.log("🏛️ Starting OFFICIAL PCSO Scraper...");
     
-    // 1. Read from Local Repo (Same as scrape.js)
+    // 1. Load from Local Repo
     let currentData = [];
     
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
@@ -53,33 +87,23 @@ const GAMES = [
             currentData = [];
         }
     } else {
-        console.log("⚠️ No local data file found. Starting fresh.");
+        console.log("⚠️ No local data file found.");
     }
 
     const initialCount = currentData.length;
 
-    // 2. Safety Check (Relaxed for Official Scraper to allow rebuilding)
-    // If local is empty, we proceed, assuming we want to rebuild.
-    if (initialCount === 0) {
-        console.warn("⚠️ WARNING: Database is empty. Proceeding to scrape history...");
-    }
-
-    // ==========================================
-    // 2. AUTO-MIGRATION: Fix Old Labels
-    // ==========================================
+    // 2. AUTO-MIGRATION (11AM -> 2PM)
     let migrationCount = 0;
     currentData.forEach(item => {
         const originalGame = item.game;
-        
         if (item.game.includes('11AM')) item.game = item.game.replace('11AM', '2PM');
         if (item.game.includes('4PM')) item.game = item.game.replace('4PM', '5PM');
-
         if (originalGame !== item.game) migrationCount++;
     });
 
     if (migrationCount > 0) {
-        console.log(`🔄 MIGRATION: Fixed ${migrationCount} entries (11AM->2PM, 4PM->5PM).`);
-        
+        console.log(`🔄 MIGRATION: Fixed ${migrationCount} entries.`);
+        // Deduplicate
         const uniqueMap = new Map();
         currentData.forEach(item => {
             const key = `${item.date}-${item.game}-${item.combination}`;
@@ -90,8 +114,6 @@ const GAMES = [
         currentData = Array.from(uniqueMap.values());
         console.log(`💾 Merged duplicates. New size: ${currentData.length}.`);
     }
-
-    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     const browser = await puppeteer.launch({ 
         headless: true,
@@ -184,7 +206,7 @@ const GAMES = [
                 });
                 process.stdout.write(`✅\n`);
             } catch (e) {
-                console.log(`❌ Error\n`);
+                console.log(`\n   ❌ Error: ${e.message}`); // Better error logging
             }
         }
 
@@ -194,7 +216,7 @@ const GAMES = [
         });
 
         // ==========================================
-        // FINAL GLOBAL CLEANUP (Safety Pass)
+        // FINAL GLOBAL CLEANUP
         // ==========================================
         console.log("🛠️ Running Final Data Sanitization...");
         let fixCount = 0;
