@@ -1,1 +1,30 @@
-
+[
+  {
+    "game": "3D Lotto 2PM",
+    "combination": "1-6-2",
+    "prize": "P 4,500",
+    "winners": "TBA",
+    "date": "2026-03-10"
+  },
+  {
+    "game": "3D Lotto 5PM",
+    "combination": "5-9-8",
+    "prize": "P 4,500",
+    "winners": "TBA",
+    "date": "2026-03-10"
+  },
+  {
+    "game": "2D Lotto 2PM",
+    "combination": "14-30",
+    "prize": "P 4,000",
+    "winners": "TBA",
+    "date": "2026-03-10"
+  },
+  {
+    "game": "2D Lotto 5PM",
+    "combination": "25-22",
+    "prize": "P 4,000",
+    "winners": "TBA",
+    "date": "2026-03-10"
+  }
+]
