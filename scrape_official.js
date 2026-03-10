@@ -23,7 +23,7 @@ const GAMES = [
     { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
     
-    // FORCED MAPPING (11AM->2PM, 4PM->5PM)
+    // FORCED MAPPING
     { id: '8', name: '3D Lotto 2PM' }, 
     { id: '9', name: '3D Lotto 5PM' }, 
     { id: '10', name: '3D Lotto 9PM' },
@@ -90,6 +90,10 @@ function cleanItem(item) {
         console.log("⚠️ No local data file found.");
     }
 
+    // CLEAN EXISTING DATA IMMEDIATELY
+    console.log("🛠️ Pre-cleaning existing data...");
+    currentData.forEach(item => cleanItem(item));
+
     const initialCount = currentData.length;
 
     // 2. AUTO-MIGRATION (11AM -> 2PM)
@@ -130,6 +134,14 @@ function cleanItem(item) {
     try {
         await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
+        // CRITICAL: Wait for the specific dropdown to appear (ASP.NET fix)
+        try {
+            await page.waitForSelector('#cphContainer_cpContent_ddlStartMonth', { timeout: 10000 });
+        } catch (e) {
+            console.log("⚠️ Dropdown not found, retrying...");
+            await wait(5000);
+        }
+
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
@@ -156,7 +168,7 @@ function cleanItem(item) {
 
                 await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
                 await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
-                await wait(3000);
+                await wait(4000); // Wait for UpdatePanel
 
                 const results = await page.evaluate((correctName) => {
                     const items = [];
@@ -206,7 +218,7 @@ function cleanItem(item) {
                 });
                 process.stdout.write(`✅\n`);
             } catch (e) {
-                console.log(`\n   ❌ Error: ${e.message}`); // Better error logging
+                console.log(`\n   ❌ Error: ${e.message}`);
             }
         }
 
@@ -216,16 +228,9 @@ function cleanItem(item) {
         });
 
         // ==========================================
-        // FINAL GLOBAL CLEANUP
+        // FINAL GLOBAL CLEANUP (Just to be safe)
         // ==========================================
-        console.log("🛠️ Running Final Data Sanitization...");
-        let fixCount = 0;
-        currentData.forEach(item => {
-            const oldPrize = item.prize;
-            cleanItem(item);
-            if (oldPrize !== item.prize) fixCount++;
-        });
-        if (fixCount > 0) console.log(`🛠️ Fixed ${fixCount} prize formatting issues.`);
+        currentData.forEach(item => cleanItem(item));
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
         console.log(`💾 Done! Added: ${newCount}, Migrated: ${migrationCount}`);
