@@ -15,21 +15,21 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // 1. GAME DEFINITIONS
 // ==========================================
 const GAMES = [
-    { id: '18', name: 'Ultra Lotto 6/58' }, 
+    { id: '18', name: 'Ultra Lotto 6/58' },
     { id: '17', name: 'Grand Lotto 6/55' },
-    { id: '1', name: 'Super Lotto 6/49' }, 
+    { id: '1', name: 'Super Lotto 6/49' },
     { id: '2', name: 'Mega Lotto 6/45' },
-    { id: '13', name: 'Lotto 6/42' }, 
+    { id: '13', name: 'Lotto 6/42' },
     { id: '5', name: '6D Lotto' },
     { id: '6', name: '4D Lotto' },
-    
+
     // FORCED MAPPING
-    { id: '8', name: '3D Lotto 2PM' }, 
-    { id: '9', name: '3D Lotto 5PM' }, 
+    { id: '8', name: '3D Lotto 2PM' },
+    { id: '9', name: '3D Lotto 5PM' },
     { id: '10', name: '3D Lotto 9PM' },
-    
-    { id: '15', name: '2D Lotto 2PM' }, 
-    { id: '16', name: '2D Lotto 5PM' }, 
+
+    { id: '15', name: '2D Lotto 2PM' },
+    { id: '16', name: '2D Lotto 5PM' },
     { id: '11', name: '2D Lotto 9PM' }
 ];
 
@@ -39,7 +39,7 @@ const GAMES = [
 function cleanItem(item) {
     // 1. Normalize Prize strings
     let prize = item.prize.replace('₱', '').trim();
-    
+
     // 2. FORCE FIXED PRIZES (2D/3D)
     if (item.game.includes('3D Lotto')) {
         item.prize = '₱ 4,500.00';
@@ -53,7 +53,7 @@ function cleanItem(item) {
     // 3. FIX MAJOR GAMES
     const isZero = prize === '0' || prize === '0.00';
     const isEmpty = !prize || prize === '';
-    
+
     if (isZero || isEmpty) {
         item.prize = '₱ TBA';
     } else {
@@ -71,10 +71,10 @@ function cleanItem(item) {
 // ==========================================
 (async () => {
     console.log("🏛️ Starting OFFICIAL PCSO Scraper...");
-    
+
     // 1. Load from Local Repo
     let currentData = [];
-    
+
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
     if (fs.existsSync(OUTPUT_FILE)) {
@@ -119,16 +119,16 @@ function cleanItem(item) {
         console.log(`💾 Merged duplicates. New size: ${currentData.length}.`);
     }
 
-    const browser = await puppeteer.launch({ 
+    const browser = await puppeteer.launch({
         headless: true,
-        executablePath: '/opt/google/chrome/chrome', 
+        executablePath: '/opt/google/chrome/chrome',
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
-    
+
     const page = await browser.newPage();
     await page.setViewport({ width: 1366, height: 768 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
+
     let newCount = 0;
 
     try {
@@ -144,7 +144,7 @@ function cleanItem(item) {
 
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        
+
         const toMonth = months[now.getMonth()];
         const toYear = now.getFullYear().toString();
         const toDay = now.getDate().toString();
@@ -184,7 +184,7 @@ function cleanItem(item) {
                             const winners = cells[4].innerText.trim();
                             let dateFormatted = dateStr;
                             const parts = dateStr.split('/');
-                            if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+                            if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
                             items.push({ date: dateFormatted, game, combination: combo, prize: `₱ ${prize}`, winners });
                         }
                     });
@@ -193,9 +193,14 @@ function cleanItem(item) {
 
                 // --- MERGE LOGIC ---
                 results.forEach(item => {
-                    const existingIndex = currentData.findIndex(i => 
-                        i.date === item.date && 
-                        i.game === item.game && 
+                    // FIX: Filter out Header Rows (e.g. where combination contains text like "Winning")
+                    if (item.combination.includes("Winning") || item.combination.includes("Combination")) {
+                        return; // Skip this fake entry
+                    }
+
+                    const existingIndex = currentData.findIndex(i =>
+                        i.date === item.date &&
+                        i.game === item.game &&
                         i.combination === item.combination
                     );
 
@@ -211,8 +216,8 @@ function cleanItem(item) {
                         const isBetterWinner = item.winners !== 'TBA' && existingItem.winners === 'TBA';
 
                         if (isBetterPrize || isBetterWinner) {
-                             currentData[existingIndex] = item; 
-                             console.log(`\n   🔄 UPDATED: ${item.game}`);
+                            currentData[existingIndex] = item;
+                            console.log(`\n   🔄 UPDATED: ${item.game}`);
                         }
                     }
                 });
