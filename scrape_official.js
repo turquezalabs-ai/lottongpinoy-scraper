@@ -21,32 +21,24 @@ const GAMES = [
 ];
 
 (async () => {
-    console.log("🏛️ OFFICIAL SCRAPER (SAFE MODE)");
+    console.log("🏛️ OFFICIAL SCRAPER (Smart Failsafe)");
     
     // 1. LOAD
     let currentData = [];
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-    
     if (fs.existsSync(OUTPUT_FILE)) {
         try {
             const rawData = fs.readFileSync(OUTPUT_FILE);
             currentData = JSON.parse(rawData);
             console.log(`💾 Loaded ${currentData.length} entries.`);
-        } catch (e) {
-            console.error("❌ ERROR READING FILE. Starting empty.");
-            currentData = [];
-        }
-    } else {
-        console.log("⚠️ No file found.");
+        } catch (e) { currentData = []; }
     }
 
-    const initialCount = currentData.length;
+    const rawLoadCount = currentData.length;
 
     // 2. CLEAN GARBAGE
-    const beforeClean = currentData.length;
     currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
-    if (currentData.length < beforeClean) console.log(`🧹 Removed ${beforeClean - currentData.length} bad entries.`);
-
+    
     // 3. MIGRATE & FIX
     currentData.forEach(i => {
         if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
@@ -59,6 +51,13 @@ const GAMES = [
     const map = new Map();
     currentData.forEach(i => map.set(`${i.date}-${i.game}-${i.combination}`, i));
     currentData = Array.from(map.values());
+    
+    // SET BASELINE AFTER CLEANUP
+    const baselineCount = currentData.length;
+    if(currentData.length < rawLoadCount) {
+        console.log(`🧹 Cleaned ${rawLoadCount - currentData.length} duplicates/garbage.`);
+    }
+    console.log(`📊 Baseline: ${baselineCount} valid entries.`);
 
     // 5. SCRAPE
     const browser = await puppeteer.launch({ 
@@ -130,17 +129,22 @@ const GAMES = [
         currentData.sort((a, b) => { const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); }; return getTs(b.date) - getTs(a.date); });
 
         // ==========================================
-        // FAILSAFE: DO NOT SAVE IF DATA IS LOST
+        // SMART FAILSAFE
         // ==========================================
         const finalCount = currentData.length;
-        const lostData = initialCount - finalCount;
 
-        if (initialCount > 1000 && lostData > 50) {
+        // Only trigger if we LOST data during the scrape (relative to baseline)
+        if (finalCount < baselineCount - 50) {
             console.error("❌ FAILSAFE TRIGGERED!");
-            console.error(`❌ Started with ${initialCount}, ended with ${finalCount}.`);
-            console.error("❌ DATA LOSS DETECTED. FILE NOT SAVED.");
-            console.error("❌ Check if read file failed.");
-            process.exit(1); // Kill job to prevent overwrite
+            console.error(`❌ Baseline: ${baselineCount}, Final: ${finalCount}.`);
+            console.error("❌ DATA LOSS DURING SCRAPE. FILE NOT SAVED.");
+            process.exit(1);
+        }
+        
+        // Also fail if we somehow wiped everything
+        if (rawLoadCount > 1000 && finalCount < 100) {
+             console.error("❌ FAILSAFE: File wiped?");
+             process.exit(1);
         }
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
