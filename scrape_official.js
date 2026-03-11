@@ -39,12 +39,26 @@ const GAMES = [
     // 2. CLEAN GARBAGE
     currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
     
-    // 3. MIGRATE & FIX
+        // 3. MIGRATE & FIX
     currentData.forEach(i => {
+        // Fix Game Names
         if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
         if (i.game.includes('4PM')) i.game = i.game.replace('4PM', '5PM');
+        
+        // Fix Prizes
         if (i.game.includes('3D Lotto')) i.prize = 'P 4,500';
         if (i.game.includes('2D Lotto')) i.prize = 'P 4,000';
+
+        // ==========================================
+        // MIGRATE DATE FORMAT (YYYY-MM-DD -> M/D/YYYY)
+        // ==========================================
+        if (i.date && i.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const parts = i.date.split('-');
+            const year = parts[0];
+            const month = parseInt(parts[1], 10);
+            const day = parseInt(parts[2], 10);
+            i.date = `${month}/${day}/${year}`;
+        }
     });
 
     // 4. DEDUPLICATE
