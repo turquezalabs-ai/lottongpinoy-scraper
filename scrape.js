@@ -83,12 +83,19 @@ const SAFETY_THRESHOLD = 5000;
                     return; 
                 }
                 
-                // 2. Get Date from 2nd <th>
+                                // 2. Get Date from 2nd <th>
                 const ths = table.querySelectorAll('thead th');
                 let dateStr = ths.length > 1 ? ths[1].innerText.trim() : '';
                 let dateFormatted = dateStr;
-                const dateParts = new Date(dateStr);
-                if (!isNaN(dateParts)) dateFormatted = dateParts.toISOString().split('T')[0];
+                
+                // Parse "March 10, 2026" -> "3/10/2026"
+                const d = new Date(dateStr);
+                if (!isNaN(d)) {
+                    const month = d.getMonth() + 1; // 1-12
+                    const day = d.getDate();        // 1-31
+                    const year = d.getFullYear();
+                    dateFormatted = `${month}/${day}/${year}`;
+                }
 
                 // 3. Loop Rows in <tbody>
                 const rows = table.querySelectorAll('tbody tr');
