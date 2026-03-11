@@ -21,25 +21,33 @@ const GAMES = [
 ];
 
 (async () => {
-    console.log("🏛️ OFFICIAL SCRAPER");
+    console.log("🏛️ OFFICIAL SCRAPER (SAFE MODE)");
     
-    // 1. Load Local
+    // 1. LOAD
     let currentData = [];
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+    
     if (fs.existsSync(OUTPUT_FILE)) {
         try {
             const rawData = fs.readFileSync(OUTPUT_FILE);
             currentData = JSON.parse(rawData);
             console.log(`💾 Loaded ${currentData.length} entries.`);
-        } catch (e) { currentData = []; }
+        } catch (e) {
+            console.error("❌ ERROR READING FILE. Starting empty.");
+            currentData = [];
+        }
+    } else {
+        console.log("⚠️ No file found.");
     }
 
-    // 2. Clean "WinningCombination" (One-Time Fix)
-    const before = currentData.length;
-    currentData = currentData.filter(i => i.combination && i.combination.match(/\d/)); // Keep only if numbers exist
-    if (currentData.length < before) console.log(`🧹 Removed ${before - currentData.length} bad entries.`);
+    const initialCount = currentData.length;
 
-    // 3. Migrate Labels
+    // 2. CLEAN GARBAGE
+    const beforeClean = currentData.length;
+    currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
+    if (currentData.length < beforeClean) console.log(`🧹 Removed ${beforeClean - currentData.length} bad entries.`);
+
+    // 3. MIGRATE & FIX
     currentData.forEach(i => {
         if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
         if (i.game.includes('4PM')) i.game = i.game.replace('4PM', '5PM');
@@ -47,15 +55,14 @@ const GAMES = [
         if (i.game.includes('2D Lotto')) i.prize = 'P 4,000';
     });
 
-    // 4. Deduplicate
+    // 4. DEDUPLICATE
     const map = new Map();
     currentData.forEach(i => map.set(`${i.date}-${i.game}-${i.combination}`, i));
     currentData = Array.from(map.values());
 
-    // 5. Launch Browser
+    // 5. SCRAPE
     const browser = await puppeteer.launch({ 
-        headless: true,
-        executablePath: '/opt/google/chrome/chrome', 
+        headless: true, executablePath: '/opt/google/chrome/chrome', 
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
     const page = await browser.newPage();
@@ -69,16 +76,9 @@ const GAMES = [
 
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        
-        const toMonth = months[now.getMonth()];
-        const toYear = now.getFullYear().toString();
-        const toDay = now.getDate().toString();
-
-        const past = new Date();
-        past.setDate(past.getDate() - 3);
-        const fromMonth = months[past.getMonth()];
-        const fromYear = past.getFullYear().toString();
-        const fromDay = past.getDate().toString();
+        const toMonth = months[now.getMonth()]; const toYear = now.getFullYear().toString(); const toDay = now.getDate().toString();
+        const past = new Date(); past.setDate(past.getDate() - 3);
+        const fromMonth = months[past.getMonth()]; const fromYear = past.getFullYear().toString(); const fromDay = past.getDate().toString();
 
         for (const game of GAMES) {
             process.stdout.write(`🔍 ${game.name}... `);
@@ -86,11 +86,9 @@ const GAMES = [
                 await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
                 await page.select('#cphContainer_cpContent_ddlStartYear', fromYear);
                 await page.select('#cphContainer_cpContent_ddlStartDate', fromDay);
-
                 await page.select('#cphContainer_cpContent_ddlEndMonth', toMonth);
                 await page.select('#cphContainer_cpContent_ddlEndYear', toYear);
                 await page.select('#cphContainer_cpContent_ddlEndDay', toDay);
-
                 await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
                 await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
                 await wait(4000);
@@ -103,62 +101,50 @@ const GAMES = [
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
                             const combo = cells[1].innerText.trim();
-                            
-                            // STRICT: Skip text headers like "WinningCombination"
-                            if (!combo.match(/\d/)) return; 
-
+                            if (!combo.match(/\d/)) return; // Skip headers
                             const dateStr = cells[2].innerText.trim();
                             let dateFormatted = dateStr;
                             const parts = dateStr.split('/');
                             if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-
-                            items.push({
-                                game: correctName,
-                                combination: combo,
-                                date: dateFormatted,
-                                prize: cells[3].innerText.trim(),
-                                winners: cells[4].innerText.trim()
-                            });
+                            items.push({ game: correctName, combination: combo, date: dateFormatted, prize: cells[3].innerText.trim(), winners: cells[4].innerText.trim() });
                         }
                     });
                     return items;
                 }, game.name);
 
                 results.forEach(item => {
-                    // Fix Prize
                     if (item.game.includes('3D Lotto')) item.prize = 'P 4,500';
                     else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000';
                     else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
                     else item.prize = `₱ ${item.prize}`;
-
-                    // Fix Winners
                     if (!item.winners || item.winners === '0') item.winners = 'TBA';
 
                     const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
-                    
-                    if (idx === -1) {
-                        currentData.push(item);
-                        newCount++;
-                        console.log(`\n   ✅ NEW`);
-                    } else {
-                        // Update if TBA
-                        if (currentData[idx].prize === '₱ TBA' && item.prize !== '₱ TBA') {
-                            currentData[idx] = item;
-                            console.log(`\n   🔄 Updated Prize`);
-                        }
-                    }
+                    if (idx === -1) { currentData.push(item); newCount++; console.log(`\n   ✅ NEW`); }
+                    else { if (currentData[idx].prize === '₱ TBA' && item.prize !== '₱ TBA') { currentData[idx] = item; console.log(`\n   🔄 Updated`); } }
                 });
                 process.stdout.write(`✅\n`);
-            } catch (e) { console.log(`\n   ❌ Error: ${e.message}`); }
+            } catch (e) { console.log(`\n   ❌ Error`); }
         }
 
-        currentData.sort((a, b) => {
-            const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); };
-            return getTs(b.date) - getTs(a.date);
-        });
+        currentData.sort((a, b) => { const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); }; return getTs(b.date) - getTs(a.date); });
+
+        // ==========================================
+        // FAILSAFE: DO NOT SAVE IF DATA IS LOST
+        // ==========================================
+        const finalCount = currentData.length;
+        const lostData = initialCount - finalCount;
+
+        if (initialCount > 1000 && lostData > 50) {
+            console.error("❌ FAILSAFE TRIGGERED!");
+            console.error(`❌ Started with ${initialCount}, ended with ${finalCount}.`);
+            console.error("❌ DATA LOSS DETECTED. FILE NOT SAVED.");
+            console.error("❌ Check if read file failed.");
+            process.exit(1); // Kill job to prevent overwrite
+        }
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Done! Added: ${newCount}`);
+        console.log(`💾 Saved. Total: ${finalCount} (Added: ${newCount})`);
 
     } catch (error) { console.error("❌ Error:", error.message); }
 
