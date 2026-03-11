@@ -2,7 +2,7 @@ name: Official PCSO Scraper
 
 on:
   schedule:
-    - cron: '0 15 * * *'
+    - cron: '15 13 * * *' # 9:15 PM Manila
   workflow_dispatch:
 
 jobs:
@@ -50,5 +50,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps  # <--- CRITICAL FIX
-          security: loose # <--- CRITICAL FIX
+          protocol: ftps
+          security: loose
