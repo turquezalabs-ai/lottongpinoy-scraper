@@ -42,17 +42,11 @@ const SAFETY_THRESHOLD = 5000;
         console.error("❌ Restore backup.");
         process.exit(1); 
     }
-    if (initialCount === 0) console.warn("⚠️ WARNING: No data loaded.");
 
     const browser = await puppeteer.launch({ 
         headless: "new", 
         executablePath: '/opt/google/chrome/chrome', 
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu',
-            '--disable-dev-shm-usage' 
-        ]
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
     });
     
     const page = await browser.newPage();
@@ -64,17 +58,17 @@ const SAFETY_THRESHOLD = 5000;
     try {
         console.log(`🌐 Navigating to ${TARGET_URL}`);
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await wait(4000); // Wait for tables to render
+        await wait(4000);
 
-        // --- PARSER: Targeting the specific HTML snippet provided ---
+        // --- PARSER: Targeting your HTML snippet ---
         const items = await page.evaluate(() => {
             const results = [];
             
-            // Select all tables with the specific class
+            // Select tables with the class from your snippet
             const tables = document.querySelectorAll('table.has-fixed-layout');
 
             tables.forEach(table => {
-                // 1. Get Game Name (from <thead> <th>)
+                // 1. Get Game Name from <thead>
                 const th = table.querySelector('thead th');
                 if (!th) return;
                 
@@ -86,17 +80,17 @@ const SAFETY_THRESHOLD = 5000;
 
                 // STRATEGY: Only Real-Time scrape 2D and 3D.
                 if (gameName !== '2D Lotto' && gameName !== '3D Lotto') {
-                    return; // Skip other games
+                    return; 
                 }
                 
-                // 2. Get Date (from 2nd <th>)
+                // 2. Get Date from 2nd <th>
                 const ths = table.querySelectorAll('thead th');
                 let dateStr = ths.length > 1 ? ths[1].innerText.trim() : '';
                 let dateFormatted = dateStr;
                 const dateParts = new Date(dateStr);
                 if (!isNaN(dateParts)) dateFormatted = dateParts.toISOString().split('T')[0];
 
-                // 3. Get Rows (from <tbody> <tr>)
+                // 3. Loop Rows in <tbody>
                 const rows = table.querySelectorAll('tbody tr');
                 rows.forEach(row => {
                     const cells = row.querySelectorAll('td');
@@ -105,8 +99,16 @@ const SAFETY_THRESHOLD = 5000;
                     const col1 = cells[0].innerText.trim(); // Time
                     const col2 = cells[1].innerText.trim(); // Numbers
 
-                    // FILTER: Ignore rows that are not Times (e.g. "First Prize")
-                    if (!col1.match(/\d/) || col1.includes('Prize') || col1.includes('Winner')) return;
+                    // ==========================================
+                    // STRICT FILTER (The Fix)
+                    // ==========================================
+                    
+                    // 1. Time column must have digits (Filters out "First Prize")
+                    if (!col1.match(/\d/)) return;
+
+                    // 2. Combination column MUST contain numbers.
+                    // This effectively deletes "Stand by...", "*", or empty rows.
+                    if (!col2.match(/\d/)) return; 
 
                     let timeRaw = col1; 
                     let numbers = col2.replace(/\s/g, '-');
