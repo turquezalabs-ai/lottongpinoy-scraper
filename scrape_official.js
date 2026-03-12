@@ -1,4 +1,6 @@
 // scrape_official.js
+// PRESERVATION MODE: Does NOT delete valid historical data.
+
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
@@ -21,180 +23,61 @@ const GAMES = [
 ];
 
 (async () => {
-    console.log("🏛️ OFFICIAL SCRAPER (Smart Failsafe)");
+    console.log("🏛️ OFFICIAL SCRAPER (Preservation Mode)");
     
     // 1. LOAD
     let currentData = [];
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+    
     if (fs.existsSync(OUTPUT_FILE)) {
         try {
             const rawData = fs.readFileSync(OUTPUT_FILE);
             currentData = JSON.parse(rawData);
             console.log(`💾 Loaded ${currentData.length} entries.`);
-        } catch (e) { currentData = []; }
+        } catch (e) {
+            console.error("❌ ERROR READING FILE. Aborting to prevent data loss.");
+            return; 
+        }
     }
 
-    const rawLoadCount = currentData.length;
+    const initialCount = currentData.length;
 
-    // 2. CLEAN GARBAGE
-    currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
-    
-        // 3. MIGRATE & FIX
+    // 2. CLEAN (Only remove absolute garbage like headers)
+    const beforeClean = currentData.length;
+    currentData = currentData.filter(i => {
+        // Delete ONLY if combination contains text like "Winning" (headers)
+        if (i.combination && i.combination.includes("Winning")) return false;
+        // Delete if combination is missing entirely
+        if (!i.combination) return false;
+        return true;
+    });
+    if (currentData.length < beforeClean) console.log(`🧹 Removed ${beforeClean - currentData.length} garbage headers.`);
+
+    // 3. DEDUPLICATE (Smart Merge - Keeps the one with best Prize)
+    console.log("🧹 Deduplicating...");
+    const map = new Map();
+    currentData.forEach(item => {
+        const key = `${item.date}-${item.game}-${item.combination}`;
+        const existing = map.get(key);
+
+        if (!existing) {
+            map.set(key, item);
+        } else {
+            // If new item is better (has real prize/winners), replace it
+            const isBetterPrize = item.prize && item.prize !== '₱ TBA' && item.prize !== 'P 4,500' && item.prize !== 'P 4,000'; // Major game logic
+            const hasWinners = item.winners && item.winners !== 'TBA' && item.winners !== '0';
+            
+            // Simple rule: If the new one has better data, keep it.
+            if (isBetterPrize || hasWinners) {
+                map.set(key, item);
+            }
+        }
+    });
+    currentData = Array.from(map.values());
+
+    // Fix 2D/3D Prizes visually
     currentData.forEach(i => {
-        // Fix Game Names
-        if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
-        if (i.game.includes('4PM')) i.game = i.game.replace('4PM', '5PM');
-        
-        // Fix Prizes
         if (i.game.includes('3D Lotto')) i.prize = 'P 4,500';
         if (i.game.includes('2D Lotto')) i.prize = 'P 4,000';
-
-        // ==========================================
-        // MIGRATE DATE FORMAT (YYYY-MM-DD -> M/D/YYYY)
-        // ==========================================
-        if (i.date && i.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            const parts = i.date.split('-');
-            const year = parts[0];
-            const month = parseInt(parts[1], 10);
-            const day = parseInt(parts[2], 10);
-            i.date = `${month}/${day}/${year}`;
-        }
-    });
-
-    // 4. DEDUPLICATE
-    const map = new Map();
-    currentData.forEach(i => map.set(`${i.date}-${i.game}-${i.combination}`, i));
-    currentData = Array.from(map.values());
-    
-    // SET BASELINE AFTER CLEANUP
-    const baselineCount = currentData.length;
-    if(currentData.length < rawLoadCount) {
-        console.log(`🧹 Cleaned ${rawLoadCount - currentData.length} duplicates/garbage.`);
-    }
-    console.log(`📊 Baseline: ${baselineCount} valid entries.`);
-
-    // 5. SCRAPE
-    const browser = await puppeteer.launch({ 
-        headless: true, executablePath: '/opt/google/chrome/chrome', 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
-    });
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    let newCount = 0;
-
-    try {
-        await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForSelector('#cphContainer_cpContent_ddlStartMonth', { timeout: 10000 });
-
-        const now = new Date();
-        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        const toMonth = months[now.getMonth()]; const toYear = now.getFullYear().toString(); const toDay = now.getDate().toString();
-        const past = new Date(); past.setDate(past.getDate() - 5);
-        const fromMonth = months[past.getMonth()]; const fromYear = past.getFullYear().toString(); const fromDay = past.getDate().toString();
-
-        for (const game of GAMES) {
-            process.stdout.write(`🔍 ${game.name}... `);
-            try {
-                await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
-                await page.select('#cphContainer_cpContent_ddlStartYear', fromYear);
-                await page.select('#cphContainer_cpContent_ddlStartDate', fromDay);
-                await page.select('#cphContainer_cpContent_ddlEndMonth', toMonth);
-                await page.select('#cphContainer_cpContent_ddlEndYear', toYear);
-                await page.select('#cphContainer_cpContent_ddlEndDay', toDay);
-                await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
-                await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
-                await wait(4000);
-
-                const results = await page.evaluate((correctName) => {
-                    const items = [];
-                    const table = document.querySelector('#cphContainer_cpContent_GridView1');
-                    if (!table) return items;
-                    table.querySelectorAll('tr').forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length >= 5) {
-                            const combo = cells[1].innerText.trim();
-                            if (!combo.match(/\d/)) return; // Skip headers
-                            const dateStr = cells[2].innerText.trim();
-                            let dateFormatted = dateStr;
-                            const parts = dateStr.split('/');
-                            if (parts.length === 3) dateFormatted = `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-                            items.push({ game: correctName, combination: combo, date: dateFormatted, prize: cells[3].innerText.trim(), winners: cells[4].innerText.trim() });
-                        }
-                    });
-                    return items;
-                }, game.name);
-
-                               // --- MERGE LOGIC ---
-                                // --- MERGE LOGIC ---
-                results.forEach(item => {
-                    // 1. Fix Prize
-                    if (item.game.includes('3D Lotto')) item.prize = 'P 4,500';
-                    else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000';
-                    else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
-                    else item.prize = `₱ ${item.prize}`;
-
-                    // 2. Fix Winners (Keep "0" as valid data, only TBA if truly empty)
-                    if (!item.winners || item.winners === '') {
-                        item.winners = 'TBA';
-                    }
-                    // Note: We keep "0" as "0" because that is valid data (Jackpot not won).
-
-                    const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
-                    
-                    if (idx === -1) {
-                        currentData.push(item);
-                        newCount++;
-                        console.log(`\n   ✅ NEW`);
-                    } else {
-                        const existingItem = currentData[idx];
-                        let needsUpdate = false;
-
-                        // Update Prize if DB has TBA
-                        if (existingItem.prize === '₱ TBA' && item.prize !== '₱ TBA') {
-                            needsUpdate = true;
-                        }
-                        
-                        // Update Winners if DB has TBA (and new data is NOT TBA)
-                        if (existingItem.winners === 'TBA' && item.winners !== 'TBA') {
-                            needsUpdate = true;
-                        }
-
-                        if (needsUpdate) {
-                            currentData[idx] = item;
-                            console.log(`\n   🔄 Updated Data`);
-                        }
-                    }
-                });
-                process.stdout.write(`✅\n`);
-            } catch (e) { console.log(`\n   ❌ Error`); }
-        }
-
-        currentData.sort((a, b) => { const getTs = (str) => { const p = str.split('-'); return parseInt(p[0]) * 10000 + parseInt(p[1]) * 100 + parseInt(p[2]); }; return getTs(b.date) - getTs(a.date); });
-
-        // ==========================================
-        // SMART FAILSAFE
-        // ==========================================
-        const finalCount = currentData.length;
-
-        // Only trigger if we LOST data during the scrape (relative to baseline)
-        if (finalCount < baselineCount - 50) {
-            console.error("❌ FAILSAFE TRIGGERED!");
-            console.error(`❌ Baseline: ${baselineCount}, Final: ${finalCount}.`);
-            console.error("❌ DATA LOSS DURING SCRAPE. FILE NOT SAVED.");
-            process.exit(1);
-        }
-        
-        // Also fail if we somehow wiped everything
-        if (rawLoadCount > 1000 && finalCount < 100) {
-             console.error("❌ FAILSAFE: File wiped?");
-             process.exit(1);
-        }
-
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
-        console.log(`💾 Saved. Total: ${finalCount} (Added: ${newCount})`);
-
-    } catch (error) { console.error("❌ Error:", error.message); }
-
-    await browser.close();
-})();
+        if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
+        if (i.game.includes('4PM')) i.game = i.game.replace('
