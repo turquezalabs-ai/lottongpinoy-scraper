@@ -126,15 +126,19 @@ const GAMES = [
                 }, game.name);
 
                                // --- MERGE LOGIC ---
+                                // --- MERGE LOGIC ---
                 results.forEach(item => {
-                    // Fix Prize
+                    // 1. Fix Prize
                     if (item.game.includes('3D Lotto')) item.prize = 'P 4,500';
                     else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000';
                     else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
                     else item.prize = `₱ ${item.prize}`;
 
-                    // Fix Winners
-                    if (!item.winners || item.winners === '0') item.winners = 'TBA';
+                    // 2. Fix Winners (Keep "0" as valid data, only TBA if truly empty)
+                    if (!item.winners || item.winners === '') {
+                        item.winners = 'TBA';
+                    }
+                    // Note: We keep "0" as "0" because that is valid data (Jackpot not won).
 
                     const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
                     
@@ -144,18 +148,14 @@ const GAMES = [
                         console.log(`\n   ✅ NEW`);
                     } else {
                         const existingItem = currentData[idx];
-                        
-                        // ==========================================
-                        // SMART UPDATE LOGIC
-                        // ==========================================
                         let needsUpdate = false;
 
-                        // 1. Update Prize if we have TBA in DB
+                        // Update Prize if DB has TBA
                         if (existingItem.prize === '₱ TBA' && item.prize !== '₱ TBA') {
                             needsUpdate = true;
                         }
                         
-                        // 2. UPDATE WINNERS if we have TBA in DB (THE FIX!)
+                        // Update Winners if DB has TBA (and new data is NOT TBA)
                         if (existingItem.winners === 'TBA' && item.winners !== 'TBA') {
                             needsUpdate = true;
                         }
