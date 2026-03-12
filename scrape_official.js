@@ -125,16 +125,46 @@ const GAMES = [
                     return items;
                 }, game.name);
 
+                               // --- MERGE LOGIC ---
                 results.forEach(item => {
+                    // Fix Prize
                     if (item.game.includes('3D Lotto')) item.prize = 'P 4,500';
                     else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000';
                     else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
                     else item.prize = `₱ ${item.prize}`;
+
+                    // Fix Winners
                     if (!item.winners || item.winners === '0') item.winners = 'TBA';
 
                     const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
-                    if (idx === -1) { currentData.push(item); newCount++; console.log(`\n   ✅ NEW`); }
-                    else { if (currentData[idx].prize === '₱ TBA' && item.prize !== '₱ TBA') { currentData[idx] = item; console.log(`\n   🔄 Updated`); } }
+                    
+                    if (idx === -1) {
+                        currentData.push(item);
+                        newCount++;
+                        console.log(`\n   ✅ NEW`);
+                    } else {
+                        const existingItem = currentData[idx];
+                        
+                        // ==========================================
+                        // SMART UPDATE LOGIC
+                        // ==========================================
+                        let needsUpdate = false;
+
+                        // 1. Update Prize if we have TBA in DB
+                        if (existingItem.prize === '₱ TBA' && item.prize !== '₱ TBA') {
+                            needsUpdate = true;
+                        }
+                        
+                        // 2. UPDATE WINNERS if we have TBA in DB (THE FIX!)
+                        if (existingItem.winners === 'TBA' && item.winners !== 'TBA') {
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate) {
+                            currentData[idx] = item;
+                            console.log(`\n   🔄 Updated Data`);
+                        }
+                    }
                 });
                 process.stdout.write(`✅\n`);
             } catch (e) { console.log(`\n   ❌ Error`); }
