@@ -30,8 +30,8 @@ const GAMES = [
         try { currentData = JSON.parse(fs.readFileSync(OUTPUT_FILE)); } 
         catch (e) { currentData = []; }
     }
-    const initialCount = currentData.length;
-    console.log(`💾 Loaded ${initialCount} entries.`);
+    const rawCount = currentData.length;
+    console.log(`💾 Loaded ${rawCount} raw entries.`);
 
     // 2. Clean ONLY Garbage (Headers)
     currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
@@ -44,7 +44,12 @@ const GAMES = [
         if (i.game.includes('2D Lotto')) i.prize = 'P 4,000.00';
     });
 
-    // 4. Scrape
+    // 4. SET BASELINE (AFTER Cleaning!)
+    // Now we measure the count of valid data.
+    const initialCount = currentData.length;
+    console.log(`📊 Baseline set to ${initialCount} valid entries.`);
+
+    // 5. Scrape
     const browser = await puppeteer.launch({ 
         headless: true, executablePath: '/opt/google/chrome/chrome', 
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
@@ -126,7 +131,8 @@ const GAMES = [
             } catch (e) { console.log(`\n   ❌ Error`); }
         }
 
-        // 5. Final Failsafe
+        // 6. Final Failsafe
+        // Compare against the 'initialCount' set AFTER cleaning.
         if (currentData.length < initialCount - 10) {
             console.error("❌ FAILSAFE: Data loss detected. Aborting save.");
             return;
