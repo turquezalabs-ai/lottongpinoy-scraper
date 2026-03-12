@@ -50,5 +50,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps
-          security: loose
+          protocol: ftps  # <--- CRITICAL FIX
+          security: loose # <--- CRITICAL FIX
