@@ -45,7 +45,6 @@ const GAMES = [
     });
 
     // 4. SET BASELINE (AFTER Cleaning!)
-    // Now we measure the count of valid data.
     const initialCount = currentData.length;
     console.log(`📊 Baseline set to ${initialCount} valid entries.`);
 
@@ -114,6 +113,9 @@ const GAMES = [
                     
                     if (!item.winners || item.winners === '') item.winners = '0';
 
+                    // NORMALIZE COMBINATION (Match Real-Time Scraper)
+                    item.combination = item.combination.replace(/\s/g, '-');
+
                     const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
                     
                     if (idx === -1) {
@@ -132,7 +134,6 @@ const GAMES = [
         }
 
         // 6. Final Failsafe
-        // Compare against the 'initialCount' set AFTER cleaning.
         if (currentData.length < initialCount - 10) {
             console.error("❌ FAILSAFE: Data loss detected. Aborting save.");
             return;
