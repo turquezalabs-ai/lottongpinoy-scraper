@@ -1,6 +1,4 @@
 // scrape_official.js
-// PRESERVATION MODE: Does NOT delete valid historical data.
-
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
@@ -23,61 +21,121 @@ const GAMES = [
 ];
 
 (async () => {
-    console.log("🏛️ OFFICIAL SCRAPER (Preservation Mode)");
+    console.log("🏛️ OFFICIAL SCRAPER (Validation Mode)");
     
-    // 1. LOAD
+    // 1. Load
     let currentData = [];
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-    
     if (fs.existsSync(OUTPUT_FILE)) {
-        try {
-            const rawData = fs.readFileSync(OUTPUT_FILE);
-            currentData = JSON.parse(rawData);
-            console.log(`💾 Loaded ${currentData.length} entries.`);
-        } catch (e) {
-            console.error("❌ ERROR READING FILE. Aborting to prevent data loss.");
-            return; 
-        }
+        try { currentData = JSON.parse(fs.readFileSync(OUTPUT_FILE)); } 
+        catch (e) { currentData = []; }
     }
-
     const initialCount = currentData.length;
+    console.log(`💾 Loaded ${initialCount} entries.`);
 
-    // 2. CLEAN (Only remove absolute garbage like headers)
-    const beforeClean = currentData.length;
-    currentData = currentData.filter(i => {
-        // Delete ONLY if combination contains text like "Winning" (headers)
-        if (i.combination && i.combination.includes("Winning")) return false;
-        // Delete if combination is missing entirely
-        if (!i.combination) return false;
-        return true;
-    });
-    if (currentData.length < beforeClean) console.log(`🧹 Removed ${beforeClean - currentData.length} garbage headers.`);
+    // 2. Clean ONLY Garbage (Headers)
+    currentData = currentData.filter(i => i.combination && i.combination.match(/\d/));
 
-    // 3. DEDUPLICATE (Smart Merge - Keeps the one with best Prize)
-    console.log("🧹 Deduplicating...");
-    const map = new Map();
-    currentData.forEach(item => {
-        const key = `${item.date}-${item.game}-${item.combination}`;
-        const existing = map.get(key);
-
-        if (!existing) {
-            map.set(key, item);
-        } else {
-            // If new item is better (has real prize/winners), replace it
-            const isBetterPrize = item.prize && item.prize !== '₱ TBA' && item.prize !== 'P 4,500' && item.prize !== 'P 4,000'; // Major game logic
-            const hasWinners = item.winners && item.winners !== 'TBA' && item.winners !== '0';
-            
-            // Simple rule: If the new one has better data, keep it.
-            if (isBetterPrize || hasWinners) {
-                map.set(key, item);
-            }
-        }
-    });
-    currentData = Array.from(map.values());
-
-    // Fix 2D/3D Prizes visually
+    // 3. Migrate Labels (Align 11AM->2PM, 4PM->5PM)
     currentData.forEach(i => {
-        if (i.game.includes('3D Lotto')) i.prize = 'P 4,500';
-        if (i.game.includes('2D Lotto')) i.prize = 'P 4,000';
         if (i.game.includes('11AM')) i.game = i.game.replace('11AM', '2PM');
-        if (i.game.includes('4PM')) i.game = i.game.replace('
+        if (i.game.includes('4PM')) i.game = i.game.replace('4PM', '5PM');
+        if (i.game.includes('3D Lotto')) i.prize = 'P 4,500.00';
+        if (i.game.includes('2D Lotto')) i.prize = 'P 4,000.00';
+    });
+
+    // 4. Scrape
+    const browser = await puppeteer.launch({ 
+        headless: true, executablePath: '/opt/google/chrome/chrome', 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+    });
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    let updatedCount = 0;
+
+    try {
+        await page.goto(PCSO_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForSelector('#cphContainer_cpContent_ddlStartMonth', { timeout: 10000 });
+
+        const now = new Date();
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const toMonth = months[now.getMonth()]; const toYear = now.getFullYear().toString(); const toDay = now.getDate().toString();
+        const past = new Date(); past.setDate(past.getDate() - 3);
+        const fromMonth = months[past.getMonth()]; const fromYear = past.getFullYear().toString(); const fromDay = past.getDate().toString();
+
+        for (const game of GAMES) {
+            process.stdout.write(`🔍 ${game.name}... `);
+            try {
+                await page.select('#cphContainer_cpContent_ddlStartMonth', fromMonth);
+                await page.select('#cphContainer_cpContent_ddlStartYear', fromYear);
+                await page.select('#cphContainer_cpContent_ddlStartDate', fromDay);
+                await page.select('#cphContainer_cpContent_ddlEndMonth', toMonth);
+                await page.select('#cphContainer_cpContent_ddlEndYear', toYear);
+                await page.select('#cphContainer_cpContent_ddlEndDay', toDay);
+                await page.select('#cphContainer_cpContent_ddlSelectGame', game.id);
+                await page.evaluate(() => document.querySelector('#cphContainer_cpContent_btnSearch').click());
+                await wait(4000);
+
+                const results = await page.evaluate((correctName) => {
+                    const items = [];
+                    const table = document.querySelector('#cphContainer_cpContent_GridView1');
+                    if (!table) return items;
+                    table.querySelectorAll('tr').forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 5) {
+                            const combo = cells[1].innerText.trim();
+                            if (!combo.match(/\d/)) return;
+                            const dateStr = cells[2].innerText.trim();
+                            let dateFormatted = dateStr;
+                            const parts = dateStr.split('/');
+                            if (parts.length === 3) dateFormatted = `${parseInt(parts[0])}/${parseInt(parts[1])}/${parts[2]}`;
+                            
+                            items.push({
+                                game: correctName, combination: combo, date: dateFormatted,
+                                prize: cells[3].innerText.trim(), winners: cells[4].innerText.trim()
+                            });
+                        }
+                    });
+                    return items;
+                }, game.name);
+
+                results.forEach(item => {
+                    // Fix Prizes
+                    if (item.game.includes('3D Lotto')) item.prize = 'P 4,500.00';
+                    else if (item.game.includes('2D Lotto')) item.prize = 'P 4,000.00';
+                    else if (item.prize === '0' || item.prize === '0.00') item.prize = '₱ TBA';
+                    else item.prize = `₱ ${item.prize}`;
+                    
+                    if (!item.winners || item.winners === '') item.winners = '0';
+
+                    const idx = currentData.findIndex(i => i.date === item.date && i.game === item.game && i.combination === item.combination);
+                    
+                    if (idx === -1) {
+                        currentData.push(item); // Add if new
+                    } else {
+                        // UPDATE: If DB has "TBA" and New has valid data
+                        const oldItem = currentData[idx];
+                        if (oldItem.winners === 'TBA' && item.winners !== 'TBA') {
+                            currentData[idx] = item; // Replace with better data
+                            updatedCount++;
+                        }
+                    }
+                });
+                process.stdout.write(`✅\n`);
+            } catch (e) { console.log(`\n   ❌ Error`); }
+        }
+
+        // 5. Final Failsafe
+        if (currentData.length < initialCount - 10) {
+            console.error("❌ FAILSAFE: Data loss detected. Aborting save.");
+            return;
+        }
+
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+        console.log(`💾 Done! Updated: ${updatedCount}`);
+
+    } catch (error) { console.error("❌ Error:", error.message); }
+
+    await browser.close();
+})();
