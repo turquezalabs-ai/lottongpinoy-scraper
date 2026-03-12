@@ -90,7 +90,7 @@ const GAMES = [
         const now = new Date();
         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         const toMonth = months[now.getMonth()]; const toYear = now.getFullYear().toString(); const toDay = now.getDate().toString();
-        const past = new Date(); past.setDate(past.getDate() - 3);
+        const past = new Date(); past.setDate(past.getDate() - 5);
         const fromMonth = months[past.getMonth()]; const fromYear = past.getFullYear().toString(); const fromDay = past.getDate().toString();
 
         for (const game of GAMES) {
