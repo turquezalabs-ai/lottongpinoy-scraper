@@ -2,7 +2,7 @@ name: Real-Time Scraper
 
 on:
   schedule:
-    - cron: '10 6 * * *'  # 2:10 PM Manila
+    - cron: '10 6 * * *'  # 2:10 PM Manila (UTC+8)
     - cron: '10 9 * * *'  # 5:10 PM Manila
     - cron: '10 13 * * *' # 9:10 PM Manila
   workflow_dispatch:
@@ -38,18 +38,12 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          
-          # 1. Force package-lock.json to match remote (Removes the conflict)
-          git checkout origin/main -- package-lock.json
-          
-          # 2. Now we can pull cleanly
-          git pull --rebase origin main
-          
-          # 3. Commit our new data
           git add data/results.json
           git commit -m "Update results.json" || echo "No changes to commit"
           
-          # 4. Push
+          # CRITICAL FIX: Pull remote changes before pushing to prevent rejection
+          git pull --rebase origin main
+          
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
