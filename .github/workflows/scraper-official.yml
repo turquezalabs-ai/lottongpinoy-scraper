@@ -37,18 +37,21 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 1. Discard npm changes
-          git checkout -- package-lock.json
-          rm -rf node_modules/
+          # --- NUCLEAR OPTION (Guaranteed Fix) ---
           
-          # 2. Pull latest changes (in case Real-Time scraper ran just before)
-          git pull --rebase origin main
+          # 1. Save the new results file to a temporary backup
+          cp data/results.json results_backup.json
           
-          # 3. Commit our updated data
+          # 2. Force the local repo to match GitHub exactly (discards npm mess)
+          git fetch origin main
+          git reset --hard origin/main
+          
+          # 3. Restore our new results file
+          mv results_backup.json data/results.json
+          
+          # 4. Add, Commit, and Push
           git add data/results.json
           git commit -m "Update results.json (Official)" || echo "No changes to commit"
-          
-          # 4. Push
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
