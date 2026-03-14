@@ -2,9 +2,9 @@ name: Real-Time Scraper
 
 on:
   schedule:
-    - cron: '25 5 * * *'  # 2:10 PM Manila
-    - cron: '25 8 * * *'  # 5:20 PM Manila
-    - cron: '25 12 * * *' # 9:10 PM Manila
+    - cron: '10 6 * * *'  # 2:10 PM Manila (UTC+8)
+    - cron: '10 9 * * *'  # 5:10 PM Manila
+    - cron: '10 13 * * *' # 9:10 PM Manila
   workflow_dispatch:
 
 jobs:
@@ -40,6 +40,10 @@ jobs:
           git config --local user.name "GitHub Action"
           git add data/results.json
           git commit -m "Update results.json" || echo "No changes to commit"
+          
+          # CRITICAL FIX: Pull remote changes before pushing to prevent rejection
+          git pull --rebase origin main
+          
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,5 +56,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps  # <--- CRITICAL FIX
-          security: loose # <--- CRITICAL FIX
+          protocol: ftps
+          security: loose
