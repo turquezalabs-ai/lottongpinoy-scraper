@@ -2,7 +2,7 @@ name: Real-Time Scraper
 
 on:
   schedule:
-    - cron: '10 6 * * *'  # 2:10 PM Manila (UTC+8)
+    - cron: '10 6 * * *'  # 2:10 PM Manila
     - cron: '10 9 * * *'  # 5:10 PM Manila
     - cron: '10 13 * * *' # 9:10 PM Manila
   workflow_dispatch:
@@ -34,16 +34,16 @@ jobs:
       - name: Run Scraper
         run: node scrape.js
 
-            - name: Commit changes
+      - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 1. Discard npm changes (package-lock.json) so they don't block the pull
+          # 1. Discard npm changes (package-lock.json) to prevent blocking
           git checkout -- package-lock.json
           rm -rf node_modules/
           
-          # 2. Pull latest changes from GitHub (to avoid rejection)
+          # 2. Pull latest changes from GitHub
           git pull --rebase origin main
           
           # 3. Commit our new data
@@ -51,10 +51,6 @@ jobs:
           git commit -m "Update results.json" || echo "No changes to commit"
           
           # 4. Push
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
