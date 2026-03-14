@@ -34,15 +34,26 @@ jobs:
       - name: Run Scraper
         run: node scrape.js
 
-      - name: Commit changes
+            - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # 1. Discard npm changes (package-lock.json) so they don't block the pull
+          git checkout -- package-lock.json
+          rm -rf node_modules/
+          
+          # 2. Pull latest changes from GitHub (to avoid rejection)
+          git pull --rebase origin main
+          
+          # 3. Commit our new data
           git add data/results.json
           git commit -m "Update results.json" || echo "No changes to commit"
           
-          # CRITICAL FIX: Pull remote changes before pushing to prevent rejection
-          git pull --rebase origin main
+          # 4. Push
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
           git push
         env:
