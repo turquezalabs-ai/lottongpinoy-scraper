@@ -2,7 +2,7 @@ name: Official PCSO Scraper
 
 on:
   schedule:
-    - cron: '00 13 * * *' # 8:15 PM Manila
+    - cron: '20 13 * * *' # 9:20 PM Manila
   workflow_dispatch:
 
 jobs:
@@ -36,8 +36,19 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # 1. Discard npm changes
+          git checkout -- package-lock.json
+          rm -rf node_modules/
+          
+          # 2. Pull latest changes (in case Real-Time scraper ran just before)
+          git pull --rebase origin main
+          
+          # 3. Commit our updated data
           git add data/results.json
           git commit -m "Update results.json (Official)" || echo "No changes to commit"
+          
+          # 4. Push
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,5 +61,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./data/
           server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps  # <--- CRITICAL FIX
-          security: loose # <--- CRITICAL FIX
+          protocol: ftps
+          security: loose
