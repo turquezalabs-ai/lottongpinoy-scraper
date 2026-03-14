@@ -38,12 +38,22 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # --- NUCLEAR OPTION (Guaranteed Fix) ---
+          
+          # 1. Save the new results file to a temporary backup
+          cp data/results.json results_backup.json
+          
+          # 2. Force the local repo to match GitHub exactly (discards npm mess)
+          git fetch origin main
+          git reset --hard origin/main
+          
+          # 3. Restore our new results file
+          mv results_backup.json data/results.json
+          
+          # 4. Add, Commit, and Push
           git add data/results.json
           git commit -m "Update results.json" || echo "No changes to commit"
-          
-          # CRITICAL FIX: Pull remote changes before pushing to prevent rejection
-          git pull --rebase origin main
-          
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
