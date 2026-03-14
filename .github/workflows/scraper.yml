@@ -34,16 +34,15 @@ jobs:
       - name: Run Scraper
         run: node scrape.js
 
-      - name: Commit changes
+            - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 1. Discard npm changes (package-lock.json) to prevent blocking
-          git checkout -- package-lock.json
-          rm -rf node_modules/
+          # 1. Force package-lock.json to match remote (Removes the conflict)
+          git checkout origin/main -- package-lock.json
           
-          # 2. Pull latest changes from GitHub
+          # 2. Now we can pull cleanly
           git pull --rebase origin main
           
           # 3. Commit our new data
