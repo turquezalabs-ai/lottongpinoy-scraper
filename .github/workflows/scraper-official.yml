@@ -2,7 +2,7 @@ name: Official PCSO Scraper
 
 on:
   schedule:
-    - cron: '20 13 * * *' # 9:20 PM Manila
+    - cron: '40 12 * * *' # 8:40 PM Manila
   workflow_dispatch:
 
 jobs:
