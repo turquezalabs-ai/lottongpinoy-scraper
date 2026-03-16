@@ -2,9 +2,9 @@ name: Real-Time Scraper
 
 on:
   schedule:
-    - cron: '35 5 * * *'   # 1:35 PM Manila
-    - cron: '35 8 * * *'   # 4:35 PM Manila
-    - cron: '35 12 * * *'  # 8:35 PM Manila
+    - cron: '10 5 * * *'   # 1:10 PM Manila
+    - cron: '10 8 * * *'   # 4:10 PM Manila
+    - cron: '10 12 * * *'  # 8:10 PM Manila
   workflow_dispatch:
 
 jobs:
