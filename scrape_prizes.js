@@ -1,3 +1,4 @@
+// scrape_prizes.js
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
@@ -25,33 +26,43 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
     
     try {
         console.log(`🌐 Navigating to ${TARGET_URL}...`);
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 }); // Wait for network to settle
 
-        // WAIT for the specific jackpot labels to appear on the homepage
-        await page.waitForSelector('span[id*="lbl"]', { timeout: 15000 });
+        // CRITICAL: Wait for the text content inside the span to exist
+        console.log("⏳ Waiting for live data to inject...");
+        
+        // We wait until one of the spans has text content (meaning the script has run)
+        await page.waitForFunction(() => {
+            const el = document.querySelector('span[id$="lbl655"]'); // Check Grand Lotto as a proxy
+            return el && el.innerText.trim().length > 0;
+        }, { timeout: 15000 });
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
             
-            // TARGET MAP: These IDs hold the "Next Jackpot" on the homepage ticker
             const mapping = {
                 "Ultra Lotto 6/58": "lbl658",
                 "Grand Lotto 6/55": "lbl655",
                 "Super Lotto 6/49": "lbl649",
                 "Mega Lotto 6/45": "lbl645",
                 "Lotto 6/42": "lbl642",
-                "6D Lotto": "lbl6D",
-                "4D Lotto": "lbl4D" 
+                "6D Lotto": "lbl6D" 
             };
 
             for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // PINPOINT: Find span where ID contains the game label
-                const element = document.querySelector(`span[id*="${idSuffix}"]`);
+                // Find the span whose ID ends with the target
+                const element = document.querySelector(`span[id$="${idSuffix}"]`);
                 
-                if (element && element.innerText.trim() !== "") {
-                    results[gameName] = element.innerText.trim();
+                if (element) {
+                    let text = element.innerText.trim();
+                    // Check if it actually looks like money (not empty or &nbsp;)
+                    if (text && text !== ' ') {
+                        results[gameName] = text;
+                    } else {
+                        results[gameName] = "Loading...";
+                    }
                 } else {
-                    results[gameName] = "N/A";
+                    results[gameName] = "Not Found";
                 }
             }
             return results;
