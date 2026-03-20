@@ -8,7 +8,6 @@ puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
-// We use the mobile view page often, it's lighter. Or default.
 const TARGET_URL = 'https://www.pcso.gov.ph/';
 
 (async () => {
@@ -16,9 +15,9 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-        const browser = await puppeteer.launch({ 
+    const browser = await puppeteer.launch({ 
         headless: "new", 
-        executablePath: '/opt/google/chrome/chrome', // <--- CRITICAL FIX
+        executablePath: '/opt/google/chrome/chrome', // CRITICAL: Use system Chrome
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
     });
 
@@ -26,37 +25,35 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
     
     try {
-        console.log(`🌐 Navigating to PCSO Homepage...`);
-        // Use domcontentloaded for speed
+        console.log(`🌐 Navigating to ${TARGET_URL}...`);
         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        
-        // Wait for the prize labels to appear
+
+        // Wait for any prize label to appear
         await page.waitForSelector('span[id*="lbl"]', { timeout: 10000 });
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
             
-            // ROBUST MAPPING: 
-            // Uses [id*="lbl658"] which means "ID contains lbl658".
-            // This works even if ASP.NET adds prefixes like "ct100_body_lbl658".
+            // MAPPING based on your Target IDs
+            // We use [id$="..."] which means "ID ends with..." to handle ASP.NET prefixes.
             const mapping = {
                 "Ultra Lotto 6/58": "lbl658",
                 "Grand Lotto 6/55": "lbl655",
                 "Super Lotto 6/49": "lbl649",
                 "Mega Lotto 6/45": "lbl645",
-                "Lotto 6/42": "lbl642"
+                "Lotto 6/42": "lbl642",
+                "6D Lotto": "lbl6D" 
             };
 
             for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // Find the element containing the ID suffix
-                const element = document.querySelector(`span[id*="${idSuffix}"]`);
+                // Find the span element whose ID ends with our target ID
+                const element = document.querySelector(`span[id$="${idSuffix}"]`);
                 
                 if (element) {
                     let text = element.innerText.trim();
-                    // Clean up text (remove "P" or weird spaces if needed)
                     results[gameName] = text;
                 } else {
-                    results[gameName] = "Not Found";
+                    results[gameName] = "N/A";
                 }
             }
             return results;
