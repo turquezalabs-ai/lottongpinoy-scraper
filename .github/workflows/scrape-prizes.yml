@@ -2,56 +2,73 @@ name: Live Prize Scraper
 
 on:
   schedule:
-    - cron: '40 0 * * *'  # 1:40 PM Manila (Before 2PM Draw)
-    - cron: '40 3 * * *'  # 4:40 PM Manila (Before 5PM Draw)
-    - cron: '40 7 * * *' # 8:40 PM Manila (Before 9PM Draw)
+    - cron: '40 0 * * *'  # 8:40 AM Manila (Corrected UTC for Morning)
+    - cron: '40 3 * * *'  # 11:40 AM Manila 
+    - cron: '40 6 * * *'  # 2:40 PM Manila (Before 2PM Draw processing)
+    - cron: '40 9 * * *'  # 5:40 PM Manila (Before 5PM Draw processing)
+    - cron: '40 13 * * *' # 9:40 PM Manila (After 9PM Draw results)
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
+          cache: 'npm'
 
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      - name: Install Dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libatspi2.0-0 libxshmfence1
-          PUPPETEER_SKIP_DOWNLOAD=true npm install
+
+      - name: Install NPM Packages
+        # We install specifically to ensure Stealth and Puppeteer-extra are present
+        run: |
+          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom --no-audit --no-fund
 
       - name: Run Prize Scraper
+        # We pass the CHROME_PATH so your script knows exactly where the browser is
         run: node scrape_prizes.js
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
 
-      - name: Commit changes
+      - name: Commit changes (Nuclear Option)
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # --- NUCLEAR OPTION (Git Conflict Fix) ---
+          # Protect the new data while we reset the branch
           cp data/prizes.json prizes_backup.json
+          
           git fetch origin main
           git reset --hard origin/main
+          
+          # Restore the freshly scraped data
+          mkdir -p data
           mv prizes_backup.json data/prizes.json
           
           git add data/prizes.json
-          git commit -m "Update live prizes" || echo "No changes to commit"
-          git push
+          git commit -m "📢 Marketing: Update live prizes [$(date)]" || echo "No changes to commit"
+          git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload to Live Site
+      - name: Upload to Live Site (FTP)
         uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: ${{ secrets.FTP_SERVER }}
