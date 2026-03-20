@@ -2,12 +2,12 @@ name: Lotto Marketing Prize Scraper
 
 on:
   schedule:
-    # Runs at 14:15 UTC (10:15 PM Philippine Time) every day
+    # Runs at 10:15 PM Manila Time (14:15 UTC)
     - cron: '15 14 * * *'
   workflow_dispatch: 
 
 jobs:
-  scrape_and_merge:
+  scrape_prizes:
     runs-on: ubuntu-latest
     
     permissions:
@@ -17,23 +17,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          # CRITICAL: This ensures the bot sees the existing data folder
-          fetch-depth: 0 
+          fetch-depth: 0 # Ensures it sees the existing prizes.json for merging
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install Puppeteer Dependencies
+      - name: Install Google Chrome
+        # This matches the /opt/google/chrome/chrome path your scraper expects
         run: |
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
-          sudo apt-get install -y libgbm-dev libnss3 libatk-bridge2.0-0 libxkbcommon0 libxdamage1 libpango-1.0-0 libcairo2
+          sudo apt-get install -y google-chrome-stable
 
-      - name: Install NPM Packages
+      - name: Install Dependencies
         run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
 
-      - name: Run Scraper
+      - name: Run Prize Scraper
+        # This runs your new scrape_prize.js
         run: node scrape_prize.js
 
       - name: Commit and Push Updated Prizes
@@ -41,6 +44,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/prizes.json
-          # Merging means the file will almost always change, but this prevents errors if it doesn't
           git commit -m "📢 Marketing: Merged Jackpot Prizes [automated]" || exit 0
           git push
