@@ -8,7 +8,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5 # If it takes more than 5 mins, something is wrong
     permissions:
       contents: write
 
@@ -23,21 +23,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Google Chrome
+      - name: Install Essentials Only
+        # We skip the heavy Chrome install and use the one already on the Ubuntu runner
         run: |
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-
-      - name: Install Dependencies
-        # THIS ENV VAR PREVENTS THE 7-MINUTE HANG
-        env:
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
-        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
+          npm install puppeteer-extra puppeteer-extra-plugin-stealth jsdom --no-audit --no-fund
 
       - name: Run Scraper
-        # POINT TO THE CHROME WE JUST INSTALLED
+        # We tell Puppeteer to use the built-in Chrome to save 5+ minutes of download time
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
         run: node scrape_prize.js
