@@ -8,21 +8,12 @@ puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
-const TARGET_URL = 'https://www.pcso.gov.ph/searchlottoresult.aspx';
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const TARGET_URL = 'https://www.pcso.gov.ph/default.aspx'; // Switch to homepage for LIVE prizes
 
 (async () => {
-    console.log("🚀 STARTING PERSISTENT PRIZE SCRAPER (Merge Mode)...");
+    console.log("🚀 SCRAPING LIVE ESTIMATED JACKPOTS...");
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-
-    let masterData = { last_updated: "", prizes: {} };
-    if (fs.existsSync(OUTPUT_FILE)) {
-        try {
-            masterData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
-            console.log(`💾 Loaded existing prizes for ${Object.keys(masterData.prizes).length} games.`);
-        } catch (e) { masterData = { last_updated: "", prizes: {} }; }
-    }
 
     const browser = await puppeteer.launch({ 
         headless: "new", 
@@ -34,60 +25,47 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
     try {
         console.log(`🌐 Navigating to ${TARGET_URL}...`);
-        
-        // Increased timeout and changed to 'networkidle0' to wait for all scripts
-        await page.goto(TARGET_URL, { waitUntil: 'networkidle0', timeout: 90000 });
-        
-        console.log("⏳ Waiting for the prize table to load...");
-        // This is the CRITICAL fix: wait until the table actually exists in the HTML
-        await page.waitForSelector('table[id*="gvLottoSearch"]', { timeout: 30000 });
-        
-        await wait(3000); // Small extra buffer
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle0', timeout: 60000 });
 
-        const scrapedItems = await page.evaluate(() => {
+        const livePrizes = await page.evaluate(() => {
             const results = {};
-            const table = document.querySelector('table[id*="gvLottoSearch"]');
-            if (!table) return null;
+            
+            // These IDs are used for the 'LIVE' jackpot labels on the PCSO homepage
+            const mapping = {
+                "6/58": "lbl658",
+                "6/55": "lbl655",
+                "6/49": "lbl649",
+                "6/45": "lbl645",
+                "6/42": "lbl642"
+            };
 
-            const rows = table.querySelectorAll('tr');
-            rows.forEach(row => {
-                const cols = row.querySelectorAll('td');
-                // In the search table, Game is index 0, Date is index 2, Prize is index 3
-                if (cols.length >= 5) {
-                    const gameName = cols[0].innerText.trim();
-                    const drawDate = cols[2].innerText.trim();
-                    const jackpot = cols[3].innerText.trim();
-
-                    // Only take the first (newest) result for each game
-                    if (gameName && jackpot && !results[gameName]) {
-                        results[gameName] = {
-                            prize: jackpot,
-                            date: drawDate
-                        };
-                    }
+            for (const [game, id] of Object.entries(mapping)) {
+                const element = document.getElementById(id);
+                if (element) {
+                    results[game] = {
+                        prize: element.innerText.trim(),
+                        status: "Estimated Next Jackpot"
+                    };
                 }
-            });
+            }
             return results;
         });
 
-        if (scrapedItems && Object.keys(scrapedItems).length > 0) {
-            console.log("🔄 Merging new prizes...");
-            for (const [game, info] of Object.entries(scrapedItems)) {
-                masterData.prizes[game] = info;
-                console.log(`   ✅ ${game}: ${info.prize}`);
-            }
+        if (Object.keys(livePrizes).length > 0) {
+            const finalOutput = {
+                last_updated: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
+                prizes: livePrizes
+            };
 
-            masterData.last_updated = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
-            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(masterData, null, 4));
-            console.log("\n📁 prizes.json successfully merged!");
+            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalOutput, null, 4));
+            console.log("✅ LIVE prizes captured for banners!");
+            console.table(livePrizes);
         } else {
-            console.error("❌ Table found, but it was empty or could not be parsed.");
+            console.error("❌ Could not find the LIVE jackpot labels.");
         }
 
     } catch (error) {
-        console.error("❌ Prize Scrape Failed:", error.message);
-        // Take a screenshot on failure to see what went wrong (viewable in GitHub artifacts)
-        await page.screenshot({ path: 'error_screenshot.png' });
+        console.error("❌ Live Scrape Failed:", error.message);
     } finally {
         await browser.close();
     }
