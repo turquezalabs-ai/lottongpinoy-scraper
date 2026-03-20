@@ -3,32 +3,35 @@ name: Lotto Marketing Prize Scraper
 on:
   schedule:
     # Runs at 14:15 UTC (10:15 PM Philippine Time) every day
-    - cron: '15 12 * * *'
-  workflow_dispatch: # Allows you to run it manually for testing
+    - cron: '15 14 * * *'
+  workflow_dispatch: 
 
 jobs:
-  scrape_and_commit:
+  scrape_and_merge:
     runs-on: ubuntu-latest
     
-    # Give the action permission to write back to the repository
     permissions:
       contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          # CRITICAL: This ensures the bot sees the existing data folder
+          fetch-depth: 0 
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install Dependencies
-        # Added --no-audit and --no-fund to skip unnecessary network checks
-        # Added --timing to see where it spends time
+      - name: Install Puppeteer Dependencies
         run: |
-          npm config set fetch-retry-maxtimeout 60000
-          npm install jsdom --no-audit --no-fund --timing
+          sudo apt-get update
+          sudo apt-get install -y libgbm-dev libnss3 libatk-bridge2.0-0 libxkbcommon0 libxdamage1 libpango-1.0-0 libcairo2
+
+      - name: Install NPM Packages
+        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
 
       - name: Run Scraper
         run: node scrape_prize.js
@@ -38,6 +41,6 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/prizes.json
-          # The "|| exit 0" prevents the action from failing if the prize didn't change
-          git commit -m "📢 Marketing: Updated Jackpot Prizes [automated]" || exit 0
+          # Merging means the file will almost always change, but this prevents errors if it doesn't
+          git commit -m "📢 Marketing: Merged Jackpot Prizes [automated]" || exit 0
           git push
