@@ -1,9 +1,9 @@
-// scrape_prizes.js
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
 
+// Use Stealth to bypass PCSO firewall
 puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
@@ -13,29 +13,54 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
 (async () => {
     console.log("💎 SCRAPING LIVE ESTIMATED JACKPOTS...");
 
-    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+    // Ensure directory exists for your FTP upload
+    if (!fs.existsSync(OUTPUT_DIR)) {
+        fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    }
 
     const browser = await puppeteer.launch({ 
         headless: "new", 
-        executablePath: '/opt/google/chrome/chrome', // CRITICAL: Use system Chrome
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+        // Picks up the path from your GitHub YAML environment
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox', 
+            '--disable-gpu', 
+            '--disable-dev-shm-usage'
+        ]
     });
 
     const page = await browser.newPage();
+    
+    // Set a desktop-class viewport to trigger the full jackpot ticker
+    await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
     
     try {
         console.log(`🌐 Navigating to ${TARGET_URL}...`);
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        
+        // Wait for network to be quiet so the ticker scripts can finish fetching data
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 90000 });
 
-        // Wait for any prize label to appear
-        await page.waitForSelector('span[id*="lbl"]', { timeout: 10000 });
+        console.log("⏳ Pinpointing live jackpot data (Waiting for numbers)...");
+        
+        /**
+         * PINPOINT LOGIC: 
+         * We wait for the 6/49 label specifically to contain a digit (\d).
+         * This prevents 'N/A' results caused by scraping before the JS ticker populates.
+         */
+        await page.waitForFunction(
+            () => {
+                const el = document.querySelector('span[id*="lbl649"]');
+                return el && /\d/.test(el.innerText); 
+            },
+            { timeout: 45000 }
+        );
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
             
-            // MAPPING based on your Target IDs
-            // We use [id$="..."] which means "ID ends with..." to handle ASP.NET prefixes.
+            // Mapping specific to the rolling homepage labels
             const mapping = {
                 "Ultra Lotto 6/58": "lbl658",
                 "Grand Lotto 6/55": "lbl655",
@@ -46,32 +71,37 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
             };
 
             for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // Find the span element whose ID ends with our target ID
-                const element = document.querySelector(`span[id$="${idSuffix}"]`);
+                // Find span where ID contains our target (bypasses ASP.NET prefixes)
+                const element = document.querySelector(`span[id*="${idSuffix}"]`);
                 
-                if (element) {
-                    let text = element.innerText.trim();
-                    results[gameName] = text;
+                if (element && element.innerText.trim() !== "") {
+                    // This captures the fresh, increased jackpot for your banners
+                    results[gameName] = element.innerText.trim();
                 } else {
-                    results[gameName] = "N/A";
+                    results[gameName] = "TBA";
                 }
             }
             return results;
         });
 
-        // Prepare Final Output
         const finalOutput = {
             last_updated: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
             prizes: livePrizes
         };
 
-        // Save to file
+        // Write the JSON for your FTP-Deploy-Action
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalOutput, null, 4));
-        console.log("✅ SUCCESS! Live prizes captured:");
+        
+        console.log("✅ SUCCESS! Fresh rolling prizes captured:");
         console.table(livePrizes);
 
     } catch (error) {
         console.error("❌ Live Scrape Failed:", error.message);
+        
+        // Optional: Save a screenshot to the data folder for debugging via FTP
+        if (fs.existsSync(OUTPUT_DIR)) {
+            await page.screenshot({ path: path.join(OUTPUT_DIR, 'latest_error.png') });
+        }
     } finally {
         await browser.close();
     }
