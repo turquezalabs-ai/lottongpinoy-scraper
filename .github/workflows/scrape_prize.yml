@@ -2,13 +2,13 @@ name: Lotto Marketing Prize Scraper
 
 on:
   schedule:
-    # Runs at 10:15 PM Manila Time (14:15 UTC)
     - cron: '15 14 * * *'
   workflow_dispatch: 
 
 jobs:
   scrape_prizes:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # Automatically kills the job if it hangs too long
     
     permissions:
       contents: write
@@ -17,26 +17,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Ensures it sees the existing prizes.json for merging
+          fetch-depth: 0 
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+          cache: 'npm'
 
-      - name: Install Google Chrome
-        # This matches the /opt/google/chrome/chrome path your scraper expects
+      - name: Install Google Chrome (Silent Mode)
+        # Added -y to automatically say "Yes" to all prompts
         run: |
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
           echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
+          sudo apt-get install -y google-chrome-stable --no-install-recommends
 
       - name: Install Dependencies
-        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
+        # Added --no-audit to skip slow security checks
+        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom --no-audit
 
       - name: Run Prize Scraper
-        # This runs your new scrape_prize.js
         run: node scrape_prize.js
 
       - name: Commit and Push Updated Prizes
@@ -44,5 +45,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/prizes.json
-          git commit -m "📢 Marketing: Merged Jackpot Prizes [automated]" || exit 0
+          git commit -m "📢 Marketing: Merged Jackpot Prizes Update" || exit 0
           git push
