@@ -3,7 +3,7 @@ name: Lotto Marketing Prize Scraper
 on:
   schedule:
     # Runs at 14:15 UTC (10:15 PM Philippine Time) every day
-    - cron: '15 14 * * *'
+    - cron: '15 12 * * *'
   workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
