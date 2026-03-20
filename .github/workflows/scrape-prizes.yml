@@ -1,64 +1,78 @@
-name: Live Prize Scraper
+// scrape_prizes.js
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const fs = require('fs');
+const path = require('path');
 
-on:
-  schedule:
-    - cron: '40 0 * * *'  # 8:40 AM Manila
-    - cron: '40 3 * * *'  # 11:40 AM Manila
-    - cron: '40 7 * * *'  # 3:40 PM Manila
-  workflow_dispatch:
+puppeteer.use(StealthPlugin());
 
-jobs:
-  scrape:
-    runs-on: ubuntu-latest
+const OUTPUT_DIR = 'data';
+const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
+const TARGET_URL = 'https://www.pcso.gov.ph/';
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+(async () => {
+    console.log("💎 SCRAPING LIVE JACKPOTS (Carousel Strategy)...");
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
+    const browser = await puppeteer.launch({ 
+        headless: "new", 
+        executablePath: '/opt/google/chrome/chrome', 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+    });
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libatspi2.0-0 libxshmfence1
-          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+    
+    try {
+        console.log(`🌐 Navigating to ${TARGET_URL}...`);
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-      - name: Run Prize Scraper
-        run: node scrape_prizes.js
+        // PRO-TIP: Give the carousel script a moment to "wake up" and fill the spans.
+        console.log("⏳ Waiting for carousel data to inject...");
+        await page.waitForTimeout(2000);
 
-      - name: Commit changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          # --- NUCLEAR OPTION (Git Conflict Fix) ---
-          mkdir -p data
-          cp data/prizes.json prizes_backup.json || touch prizes_backup.json
-          git fetch origin main
-          git reset --hard origin/main
-          mv prizes_backup.json data/prizes.json
-          
-          git add data/prizes.json
-          git commit -m "Update live prizes [$(date)]" || echo "No changes to commit"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        const livePrizes = await page.evaluate(() => {
+            const results = {};
+            
+            // MAPPING: Target the Hidden Spans via ID Contains selector
+            const mapping = {
+                "Ultra Lotto 6/58": "lbl658",
+                "Grand Lotto 6/55": "lbl655",
+                "Super Lotto 6/49": "lbl649",
+                "Mega Lotto 6/45": "lbl645",
+                "Lotto 6/42": "lbl642",
+                "6D Lotto": "lbl6D",
+                "4D Lotto": "lbl4D"
+            };
 
-      - name: Upload to Live Site
-        uses: SamKirkland/FTP-Deploy-Action@4.3.0
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./data/
-          server-dir: domains/lottong-pinoy.com/public_html/
-          protocol: ftps
-          security: loose
+            for (const [gameName, idSuffix] of Object.entries(mapping)) {
+                // STRATEGY: Find span where ID contains our target (e.g., id*="lbl655")
+                const element = document.querySelector(`span[id*="${idSuffix}"]`);
+                
+                if (element) {
+                    // It works even if hidden (display:none)!
+                    let text = element.innerText.trim();
+                    results[gameName] = text || "N/A";
+                } else {
+                    results[gameName] = "Not Found";
+                }
+            }
+            return results;
+        });
+
+        const finalOutput = {
+            last_updated: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
+            prizes: livePrizes
+        };
+
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalOutput, null, 4));
+        console.log("✅ SUCCESS! Live prizes captured from Carousel:");
+        console.table(livePrizes);
+
+    } catch (error) {
+        console.error("❌ Live Scrape Failed:", error.message);
+    } finally {
+        await browser.close();
+    }
+})();
