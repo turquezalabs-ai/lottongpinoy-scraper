@@ -11,7 +11,7 @@ const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
 const TARGET_URL = 'https://www.pcso.gov.ph/';
 
 (async () => {
-    console.log("💎 SCRAPING LIVE ESTIMATED JACKPOTS...");
+    console.log("💎 SCRAPING LIVE JACKPOTS (Carousel Strategy)...");
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
@@ -26,41 +26,35 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
     
     try {
         console.log(`🌐 Navigating to ${TARGET_URL}...`);
-        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 }); // Wait for network to settle
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // CRITICAL: Wait for the text content inside the span to exist
-        console.log("⏳ Waiting for live data to inject...");
-        
-        // We wait until one of the spans has text content (meaning the script has run)
-        await page.waitForFunction(() => {
-            const el = document.querySelector('span[id$="lbl655"]'); // Check Grand Lotto as a proxy
-            return el && el.innerText.trim().length > 0;
-        }, { timeout: 15000 });
+        // CRITICAL: Wait for the hidden spans to exist in the DOM.
+        // We wait for 'lbl655' as a proxy to ensure the carousel data has loaded.
+        console.log("⏳ Waiting for carousel data to inject...");
+        await page.waitForSelector('span[id*="lbl655"]', { timeout: 15000 });
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
             
+            // EXACT MAPPING based on your research
             const mapping = {
                 "Ultra Lotto 6/58": "lbl658",
                 "Grand Lotto 6/55": "lbl655",
                 "Super Lotto 6/49": "lbl649",
                 "Mega Lotto 6/45": "lbl645",
                 "Lotto 6/42": "lbl642",
-                "6D Lotto": "lbl6D" 
+                "6D Lotto": "lbl6D",
+                "4D Lotto": "lbl4D"
             };
 
             for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // Find the span whose ID ends with the target
-                const element = document.querySelector(`span[id$="${idSuffix}"]`);
+                // STRATEGY: Target the Hidden Spans using "Contains" selector
+                const element = document.querySelector(`span[id*="${idSuffix}"]`);
                 
                 if (element) {
+                    // It might be hidden (display:none), but innerText still works!
                     let text = element.innerText.trim();
-                    // Check if it actually looks like money (not empty or &nbsp;)
-                    if (text && text !== ' ') {
-                        results[gameName] = text;
-                    } else {
-                        results[gameName] = "Loading...";
-                    }
+                    results[gameName] = text || "N/A";
                 } else {
                     results[gameName] = "Not Found";
                 }
@@ -74,7 +68,7 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
         };
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalOutput, null, 4));
-        console.log("✅ SUCCESS! Live prizes captured:");
+        console.log("✅ SUCCESS! Live prizes captured from Carousel:");
         console.table(livePrizes);
 
     } catch (error) {
