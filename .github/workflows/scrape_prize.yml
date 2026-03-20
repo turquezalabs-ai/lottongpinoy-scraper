@@ -24,8 +24,11 @@ jobs:
           node-version: '18'
 
       - name: Install Dependencies
-        # We only need jsdom to parse the HTML
-        run: npm install jsdom
+        # Added --no-audit and --no-fund to skip unnecessary network checks
+        # Added --timing to see where it spends time
+        run: |
+          npm config set fetch-retry-maxtimeout 60000
+          npm install jsdom --no-audit --no-fund --timing
 
       - name: Run Scraper
         run: node scrape_prize.js
