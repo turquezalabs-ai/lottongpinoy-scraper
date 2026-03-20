@@ -1,12 +1,12 @@
 {
-    "last_updated": "3/20/2026, 11:19:01 PM",
+    "last_updated": "3/20/2026, 11:33:51 PM",
     "prizes": {
-        "Ultra Lotto 6/58": "Not Found",
-        "Grand Lotto 6/55": "Not Found",
-        "Super Lotto 6/49": "Not Found",
-        "Mega Lotto 6/45": "Not Found",
-        "Lotto 6/42": "Not Found",
-        "6D Lotto": "Not Found",
-        "4D Lotto": "Not Found"
+        "Ultra Lotto 6/58": "Error",
+        "Grand Lotto 6/55": "Error",
+        "Super Lotto 6/49": "Error",
+        "Mega Lotto 6/45": "Error",
+        "Lotto 6/42": "Error",
+        "6D Lotto": "Error",
+        "4D Lotto": "Error"
     }
 }
