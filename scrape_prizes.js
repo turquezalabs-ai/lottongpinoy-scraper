@@ -16,8 +16,9 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-    const browser = await puppeteer.launch({ 
+        const browser = await puppeteer.launch({ 
         headless: "new", 
+        executablePath: '/opt/google/chrome/chrome', // <--- CRITICAL FIX
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
     });
 
