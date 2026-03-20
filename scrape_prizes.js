@@ -9,6 +9,7 @@ puppeteer.use(StealthPlugin());
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
 const TARGET_URL = 'https://www.pcso.gov.ph/';
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
     console.log("💎 SCRAPING LIVE JACKPOTS (Carousel Strategy)...");
@@ -30,7 +31,7 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
 
         // PRO-TIP: Give the carousel script a moment to "wake up" and fill the spans.
         console.log("⏳ Waiting for carousel data to inject...");
-        await page.waitForTimeout(2000);
+        await wait(3000); // Fixed: Using standard wait function instead of deprecated waitForTimeout
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
