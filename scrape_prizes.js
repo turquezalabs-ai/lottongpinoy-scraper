@@ -8,11 +8,21 @@ puppeteer.use(StealthPlugin());
 
 const OUTPUT_DIR = 'data';
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'prizes.json');
-const TARGET_URL = 'https://www.pcso.gov.ph/';
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// We scrape the specific Game Pages because the Homepage uses Images (JPG)
+const GAMES = [
+    { name: 'Ultra Lotto 6/58', url: 'https://www.pcso.gov.ph/Games/Lotto/UltraLotto658.aspx' },
+    { name: 'Grand Lotto 6/55', url: 'https://www.pcso.gov.ph/Games/Lotto/GrandLotto655.aspx' },
+    { name: 'Super Lotto 6/49', url: 'https://www.pcso.gov.ph/Games/Lotto/SuperLotto649.aspx' },
+    { name: 'Mega Lotto 6/45', url: 'https://www.pcso.gov.ph/Games/Lotto/MegaLotto645.aspx' },
+    { name: 'Lotto 6/42',    url: 'https://www.pcso.gov.ph/Games/Lotto/Lotto642.aspx' },
+    { name: '6D Lotto',       url: 'https://www.pcso.gov.ph/Games/Lotto/6D.aspx' },
+    { name: '4D Lotto',       url: 'https://www.pcso.gov.ph/Games/Lotto/4D.aspx' }
+];
+
 (async () => {
-    console.log("💎 SCRAPING LIVE JACKPOTS (Carousel Strategy)...");
+    console.log("💎 SCRAPING LIVE JACKPOTS FROM GAME PAGES...");
 
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
@@ -25,42 +35,51 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
     
+    const livePrizes = {};
+
     try {
-        console.log(`🌐 Navigating to ${TARGET_URL}...`);
-        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+        for (const game of GAMES) {
+            process.stdout.write(`🔍 ${game.name}... `);
+            try {
+                await page.goto(game.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await wait(2000); 
 
-        // PRO-TIP: Give the carousel script a moment to "wake up" and fill the spans.
-        console.log("⏳ Waiting for carousel data to inject...");
-        await wait(3000); // Fixed: Using standard wait function instead of deprecated waitForTimeout
+                const prize = await page.evaluate(() => {
+                    // STRATEGY: Find the word "Jackpot" (or "Estimated") and grab the number next to it.
+                    
+                    // Method 1: Look for a specific ASP.NET Label ID (common in PCSO)
+                    let el = document.querySelector('[id*="lblJackpot"], [id*="lblCurrentJackpot"], [id*="lblEstimate"]');
+                    if (el && el.innerText.match(/\d/)) return el.innerText.trim();
 
-        const livePrizes = await page.evaluate(() => {
-            const results = {};
-            
-            // MAPPING: Target the Hidden Spans via ID Contains selector
-            const mapping = {
-                "Ultra Lotto 6/58": "lbl658",
-                "Grand Lotto 6/55": "lbl655",
-                "Super Lotto 6/49": "lbl649",
-                "Mega Lotto 6/45": "lbl645",
-                "Lotto 6/42": "lbl642",
-                "6D Lotto": "lbl6D",
-                "4D Lotto": "lbl4D"
-            };
+                    // Method 2: Find "Jackpot" text in the page and take the sibling
+                    const allElements = Array.from(document.querySelectorAll('td, span, div, b, p, h2, h3'));
+                    for (const el of allElements) {
+                        const txt = el.innerText.trim();
+                        // Find the label "Jackpot:"
+                        if (txt === 'Jackpot:' || txt === 'Jackpot' || txt === 'Estimated Jackpot:') {
+                            // Check next sibling
+                            if (el.nextElementSibling) {
+                                const val = el.nextElementSibling.innerText.trim();
+                                if (val.match(/\d/)) return val;
+                            }
+                            // Check parent's next sibling (common in table layouts)
+                            if (el.parentElement && el.parentElement.nextElementSibling) {
+                                const val = el.parentElement.nextElementSibling.innerText.trim();
+                                if (val.match(/\d/)) return val;
+                            }
+                        }
+                    }
 
-            for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // STRATEGY: Find span where ID contains our target (e.g., id*="lbl655")
-                const element = document.querySelector(`span[id*="${idSuffix}"]`);
-                
-                if (element) {
-                    // It works even if hidden (display:none)!
-                    let text = element.innerText.trim();
-                    results[gameName] = text || "N/A";
-                } else {
-                    results[gameName] = "Not Found";
-                }
+                    return "N/A";
+                });
+
+                livePrizes[game.name] = prize;
+                process.stdout.write(`✅ ${prize}\n`);
+            } catch (e) {
+                livePrizes[game.name] = "Error";
+                process.stdout.write(`❌\n`);
             }
-            return results;
-        });
+        }
 
         const finalOutput = {
             last_updated: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
@@ -68,11 +87,11 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         };
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalOutput, null, 4));
-        console.log("✅ SUCCESS! Live prizes captured from Carousel:");
+        console.log("\n✅ SUCCESS! File saved.");
         console.table(livePrizes);
 
     } catch (error) {
-        console.error("❌ Live Scrape Failed:", error.message);
+        console.error("❌ Major Error:", error.message);
     } finally {
         await browser.close();
     }
