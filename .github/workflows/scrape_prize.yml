@@ -2,51 +2,50 @@ name: Lotto Marketing Prize Scraper
 
 on:
   schedule:
-    # Runs at 10:15 PM Manila Time (14:15 UTC)
     - cron: '15 14 * * *'
-  workflow_dispatch: # Allows you to trigger it manually from the Actions tab
+  workflow_dispatch: 
 
 jobs:
-  scrape_prizes:
+  scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    
+    timeout-minutes: 10
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Required for your merge logic to see the existing data/prizes.json
           fetch-depth: 0 
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Stable version for Puppeteer
-          cache: 'npm'
+          node-version: '20'
 
       - name: Install Google Chrome
-        # This ensures the browser is at /opt/google/chrome/chrome
         run: |
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
           echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable --no-install-recommends
+          sudo apt-get install -y google-chrome-stable
 
       - name: Install Dependencies
-        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom --no-audit
+        # THIS ENV VAR PREVENTS THE 7-MINUTE HANG
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth jsdom
 
-      - name: Run Prize Scraper
-        # This executes your updated scrape_prize.js with the waitForSelector fix
+      - name: Run Scraper
+        # POINT TO THE CHROME WE JUST INSTALLED
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
         run: node scrape_prize.js
 
-      - name: Commit and Push Updated Prizes
+      - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/prizes.json
-          # Commit only if there are changes; "|| exit 0" prevents the action from failing
-          git commit -m "📢 Marketing: Merged Jackpot Prizes Update [automated]" || exit 0
+          git commit -m "📢 Marketing: Fresh Jackpot Update" || exit 0
           git push
