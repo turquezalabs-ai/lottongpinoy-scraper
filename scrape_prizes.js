@@ -28,15 +28,14 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
         console.log(`🌐 Navigating to ${TARGET_URL}...`);
         await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // CRITICAL: Wait for the hidden spans to exist in the DOM.
-        // We wait for 'lbl655' as a proxy to ensure the carousel data has loaded.
+        // PRO-TIP: Give the carousel script a moment to "wake up" and fill the spans.
         console.log("⏳ Waiting for carousel data to inject...");
-        await page.waitForSelector('span[id*="lbl655"]', { timeout: 15000 });
+        await page.waitForTimeout(2000);
 
         const livePrizes = await page.evaluate(() => {
             const results = {};
             
-            // EXACT MAPPING based on your research
+            // MAPPING: Target the Hidden Spans via ID Contains selector
             const mapping = {
                 "Ultra Lotto 6/58": "lbl658",
                 "Grand Lotto 6/55": "lbl655",
@@ -48,11 +47,11 @@ const TARGET_URL = 'https://www.pcso.gov.ph/';
             };
 
             for (const [gameName, idSuffix] of Object.entries(mapping)) {
-                // STRATEGY: Target the Hidden Spans using "Contains" selector
+                // STRATEGY: Find span where ID contains our target (e.g., id*="lbl655")
                 const element = document.querySelector(`span[id*="${idSuffix}"]`);
                 
                 if (element) {
-                    // It might be hidden (display:none), but innerText still works!
+                    // It works even if hidden (display:none)!
                     let text = element.innerText.trim();
                     results[gameName] = text || "N/A";
                 } else {
