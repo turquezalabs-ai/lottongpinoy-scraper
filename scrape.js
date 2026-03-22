@@ -14,7 +14,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const SAFETY_THRESHOLD = 5000;
 
 (async () => {
-    console.log("⚡ REAL-TIME SCRAPER (Reset Version)");
+    console.log("⚡ REAL-TIME SCRAPER");
     
     // 1. Load Local Data
     let currentData = [];
@@ -89,7 +89,7 @@ const SAFETY_THRESHOLD = 5000;
                         game: finalGame,
                         combination: combo.replace(/\s/g, '-'),
                         prize: gameName === '3D Lotto' ? 'P 4,500.00' : 'P 4,000.00',
-                        winners: 'TBA', // Always TBA for Realtime
+                        winners: 'TBA', 
                         date: dateFormatted
                     });
                 });
@@ -107,16 +107,25 @@ const SAFETY_THRESHOLD = 5000;
             }
         });
 
-        // Sort
-        currentData.sort((a, b) => {
-            const getTs = str => { const p = str.split('/'); return parseInt(p[2]) * 10000 + parseInt(p[0]) * 100 + parseInt(p[1]); };
-            return getTs(b.date) - getTs(a.date);
-        });
-
         // FAILSAFE CHECK 2
         if (currentData.length < initialCount - 10) {
             console.error("❌ FAILSAFE: Data lost during processing. File not saved.");
             process.exit(1);
+        }
+
+        // ==========================================
+        // COPYRIGHT TRAP (Watermark)
+        // ==========================================
+        // Check if trap exists to avoid duplicates, otherwise add it.
+        const hasTrap = currentData.some(i => i.game === "COPYRIGHT © LOTTO NG PINOY");
+        if (!hasTrap) {
+            currentData.push({
+                game: "COPYRIGHT © LOTTO NG PINOY",
+                combination: "THIS-DATA-IS-STOLEN",
+                date: "12/31/2099",
+                prize: "LEGAL ACTION WILL BE TAKEN",
+                winners: "0"
+            });
         }
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
