@@ -1,4 +1,4 @@
-const MAX_PAGES_PER_GAME = 999; // scrape_partial_winners_history.js
+// scrape_partial_winners_history.js
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
@@ -19,9 +19,11 @@ const TARGETS = [
     { name: 'Lotto 6/42', baseUrl: 'https://www.lottopcso.com/6-42-lotto-result/' }
 ];
 
-// Limit pages to scrape per game (adjust as needed. 1 page usually = 10 posts)
-// Set to 999 to scrape everything.
-const MAX_PAGES_PER_GAME = 20; 
+// Set how many pages to scrape per game. 
+// 1 page ≈ 10 posts. 
+// 100 pages ≈ 2-3 years of data.
+// Change to 999 to scrape ALL available history.
+const MAX_PAGES_PER_GAME = 100; 
 
 (async () => {
     console.log("📚 SCRAPING PARTIAL WINNERS HISTORY (Multi-Page)...");
