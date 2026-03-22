@@ -146,7 +146,7 @@ const GAMES = [
         // COPYRIGHT TRAP (Watermark)
         // ==========================================
         currentData.push({
-            game: "COPYRIGHT © LOTTO NG PINOY",
+            game: "COPYRIGHT © Lottong Pinoy",
             combination: "THIS-DATA-IS-STOLEN",
             date: "12/31/2099",
             prize: "LEGAL ACTION WILL BE TAKEN",
