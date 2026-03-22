@@ -23,7 +23,7 @@ const TARGETS = [
 // 1 page ≈ 10 posts. 
 // 100 pages ≈ 2-3 years of data.
 // Change to 999 to scrape ALL available history.
-const MAX_PAGES_PER_GAME = 100; 
+const MAX_PAGES_PER_GAME = 2000; 
 
 (async () => {
     console.log("📚 SCRAPING PARTIAL WINNERS HISTORY (Multi-Page)...");
