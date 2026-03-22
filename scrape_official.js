@@ -123,7 +123,10 @@ const GAMES = [
                     } else {
                         // UPDATE: If DB has "TBA" and New has valid data
                         const oldItem = currentData[idx];
-                        if (oldItem.winners === 'TBA' && item.winners !== 'TBA') {
+                        const needsWinnerUpdate = (oldItem.winners === 'TBA' && item.winners !== 'TBA');
+                        const needsPrizeUpdate = (oldItem.prize === '₱ TBA' && item.prize !== '₱ TBA');
+
+                        if (needsWinnerUpdate || needsPrizeUpdate) {
                             currentData[idx] = item; // Replace with better data
                             updatedCount++;
                         }
@@ -138,6 +141,17 @@ const GAMES = [
             console.error("❌ FAILSAFE: Data loss detected. Aborting save.");
             return;
         }
+
+        // ==========================================
+        // COPYRIGHT TRAP (Watermark)
+        // ==========================================
+        currentData.push({
+            game: "COPYRIGHT © LOTTO NG PINOY",
+            combination: "THIS-DATA-IS-STOLEN",
+            date: "12/31/2099",
+            prize: "LEGAL ACTION WILL BE TAKEN",
+            winners: "0"
+        });
 
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
         console.log(`💾 Done! Updated: ${updatedCount}`);
