@@ -1,4 +1,4 @@
-// scrape_partial_winners_history.js
+const MAX_PAGES_PER_GAME = 999; // scrape_partial_winners_history.js
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
