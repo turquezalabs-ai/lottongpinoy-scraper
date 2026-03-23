@@ -112,10 +112,22 @@ const MAX_PAGES_PER_GAME = 2000;
                         return items;
                     }, target.name);
 
-                    if (resultsOnPage.length === 0) {
+                                        if (resultsOnPage.length === 0) {
                         process.stdout.write(`⏹️ No data found.\n`);
                         break;
                     }
+
+                    // --- SMART STOP ---
+                    // Check if the date of the FIRST item on this page already exists in our DB.
+                    // If yes, we reached the point where we already scraped before. STOP.
+                    const firstItemDate = resultsOnPage[0].date;
+                    const dateExists = currentData.some(d => d.game === target.name && d.date === firstItemDate);
+
+                    if (dateExists) {
+                        process.stdout.write(`🛑 Data exists up to this date. Stopping.\n`);
+                        break; // Stop the loop for this game
+                    }
+                    // -------------------
 
                     allData.push(...resultsOnPage);
                     process.stdout.write(`✅ Added ${resultsOnPage.length} entries\n`);
