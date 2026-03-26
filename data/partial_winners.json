@@ -180,5 +180,31 @@
     "prize_3rd": "₱397.11",
     "winners_4th": "30579",
     "prize_4th": "₱30.00"
+  },
+  {
+    "game": "Super Lotto 6/49",
+    "date": "3/26/2026",
+    "combination": "46-04-19-25-33-02",
+    "jackpot_prize": "₱144,085,930.99",
+    "jackpot_winners": "0",
+    "winners_2nd": "15",
+    "prize_2nd": "₱86,666.66",
+    "winners_3rd": "1218",
+    "prize_3rd": "₱985.22",
+    "winners_4th": "26771",
+    "prize_4th": "₱50.00"
+  },
+  {
+    "game": "Lotto 6/42",
+    "date": "3/26/2026",
+    "combination": "29-15-03-18-23-30",
+    "jackpot_prize": "₱10,000,000.00",
+    "jackpot_winners": "0",
+    "winners_2nd": "58",
+    "prize_2nd": "₱18,965.51",
+    "winners_3rd": "2553",
+    "prize_3rd": "₱391.69",
+    "winners_4th": "27767",
+    "prize_4th": "₱20.00"
   }
 ]
