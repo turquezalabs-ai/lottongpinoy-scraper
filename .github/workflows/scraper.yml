@@ -2,15 +2,15 @@ name: Real-Time Scraper
 
 on:
   schedule:
-  - cron: '50 5 * * *'   # 1:50 PM PHT (05:50 UTC)
-  - cron: '10 6 * * *'   # 2:10 PM PHT (06:10 UTC)
-  - cron: '30 6 * * *'   # 2:30 PM PHT (06:30 UTC)
-  - cron: '50 8 * * *'   # 4:50 PM PHT (08:50 UTC)
-  - cron: '10 9 * * *'   # 5:10 PM PHT (09:10 UTC)
-  - cron: '30 9 * * *'   # 5:30 PM PHT (09:30 UTC)
-  - cron: '50 12 * * *'  # 8:50 PM PHT (12:50 UTC)
-  - cron: '10 13 * * *'  # 9:10 PM PHT (13:10 UTC)
-  - cron: '30 13 * * *'  # 9:30 PM PHT (13:30 UTC)
+    - cron: '10 5 * * *'
+    - cron: '30 5 * * *'
+    - cron: '00 6 * * *'
+    - cron: '10 8 * * *'
+    - cron: '30 8 * * *'
+    - cron: '00 9 * * *'
+    - cron: '10 11 * * *'
+    - cron: '30 11 * * *'
+    - cron: '50 12 * * *'
   workflow_dispatch:
 
 jobs:
