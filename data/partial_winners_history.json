@@ -1,5 +1,31 @@
 [
   {
+    "game": "Grand Lotto 6/55",
+    "date": "3/28/2026",
+    "combination": "01-18-51-19-21-05",
+    "jackpot_prize": "₱45,000,000.00",
+    "jackpot_winners": "0",
+    "winners_2nd": "9",
+    "prize_2nd": "₱155,555.55",
+    "winners_3rd": "793",
+    "prize_3rd": "₱1,639.34",
+    "winners_4th": "15528",
+    "prize_4th": "₱60.00"
+  },
+  {
+    "game": "Lotto 6/42",
+    "date": "3/28/2026",
+    "combination": "11-23-09-05-01-03",
+    "jackpot_prize": "₱10,000,000.00",
+    "jackpot_winners": "1",
+    "winners_2nd": "134",
+    "prize_2nd": "₱8,208.95",
+    "winners_3rd": "3438",
+    "prize_3rd": "₱290.86",
+    "winners_4th": "35243",
+    "prize_4th": "₱20.00"
+  },
+  {
     "game": "Ultra Lotto 6/58",
     "date": "3/27/2026",
     "combination": "12-57-16-01-42-51",
