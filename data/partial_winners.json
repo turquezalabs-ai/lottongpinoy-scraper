@@ -284,5 +284,31 @@
     "prize_3rd": "₱462.60",
     "winners_4th": "42468",
     "prize_4th": "₱50.00"
+  },
+  {
+    "game": "Grand Lotto 6/55",
+    "date": "3/30/2026",
+    "combination": "27-34-31-54-23-03",
+    "jackpot_prize": "₱45,000,000.00",
+    "jackpot_winners": "0",
+    "winners_2nd": "6",
+    "prize_2nd": "₱233,333.33",
+    "winners_3rd": "501",
+    "prize_3rd": "₱2,594.81",
+    "winners_4th": "11107",
+    "prize_4th": "₱60.00"
+  },
+  {
+    "game": "Mega Lotto 6/45",
+    "date": "3/30/2026",
+    "combination": "03-27-24-07-43-13",
+    "jackpot_prize": "₱15,000,000.00",
+    "jackpot_winners": "0",
+    "winners_2nd": "23",
+    "prize_2nd": "₱52,173.91",
+    "winners_3rd": "1427",
+    "prize_3rd": "₱770.84",
+    "winners_4th": "21722",
+    "prize_4th": "₱30.00"
   }
 ]
