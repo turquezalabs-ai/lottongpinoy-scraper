@@ -1,7 +1,9 @@
 name: Partial Winners History
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Runs only when you click "Run workflow"
+  schedule:
+    - cron: '30 13 * * *' # Runs at 9:30 PM Manila Time
 
 jobs:
   scrape:
@@ -16,39 +18,36 @@ jobs:
         with:
           node-version: '18'
 
-      # OPTIMIZED: Install Chrome & Dependencies in one go
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      - name: Install Node Dependencies
+      - name: Install Dependencies
         run: npm install
 
-      # This ensures Puppeteer uses the Chrome we just installed
-      - name: Run History Scraper
-        run: node scrape_partial_winners_history.js
-        env:
-          PUPPETEER_EXECUTABLE_PATH: $(which chrome)
+      - name: Run Partial Winners Scraper
+        run: node scrape_partial_winners.js
 
       - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # NUCLEAR OPTION (Prevents Git Conflicts)
-          if [ -f data/partial_winners_history.json ]; then
-            cp data/partial_winners_history.json history_backup.json
+          # --- NUCLEAR OPTION (Prevents Git Conflicts) ---
+          if [ -f data/partial_winners.json ]; then
+            cp data/partial_winners.json backup.json
           fi
           
           git fetch origin main
           git reset --hard origin/main
           
-          if [ -f history_backup.json ]; then
-            mv history_backup.json data/partial_winners_history.json
+          if [ -f backup.json ]; then
+            mkdir -p data
+            mv backup.json data/partial_winners.json
           fi
           
-          git add data/partial_winners_history.json
+          git add data/partial_winners.json
           git commit -m "Update partial winners history" || echo "No changes to commit"
           git push
         env:
