@@ -1,7 +1,7 @@
 name: Partial Winners History
 
 on:
-  workflow_dispatch: # Runs only when you click "Run workflow"
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -16,31 +16,37 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          # FIX: Changed libasound2 to libasound2t64 for Ubuntu 24.04 (Noble)
-          sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libatspi2.0-0 libxshmfence1
-          
-          # Install Node modules
-          npm install
-          
-          # DOWNLOAD CHROME specifically for Puppeteer
-          npx puppeteer browsers install chrome
+      # OPTIMIZED: Install Chrome & Dependencies in one go
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
 
+      - name: Install Node Dependencies
+        run: npm install
+
+      # This ensures Puppeteer uses the Chrome we just installed
       - name: Run History Scraper
         run: node scrape_partial_winners_history.js
+        env:
+          PUPPETEER_EXECUTABLE_PATH: $(which chrome)
 
       - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # --- NUCLEAR OPTION (Prevents Git Conflicts) ---
-          cp data/partial_winners_history.json history_backup.json
+          # NUCLEAR OPTION (Prevents Git Conflicts)
+          if [ -f data/partial_winners_history.json ]; then
+            cp data/partial_winners_history.json history_backup.json
+          fi
+          
           git fetch origin main
           git reset --hard origin/main
-          mv history_backup.json data/partial_winners_history.json
+          
+          if [ -f history_backup.json ]; then
+            mv history_backup.json data/partial_winners_history.json
+          fi
           
           git add data/partial_winners_history.json
           git commit -m "Update partial winners history" || echo "No changes to commit"
