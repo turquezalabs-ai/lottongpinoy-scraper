@@ -1,65 +1,72 @@
-const puppeteer = require('puppeteer');
+// scrape_partial_winners_history.js
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
+const path = require('path');
 
-// DEFINE YOUR GAMES HERE
-const GAMES = [
-    { name: 'Ultra Lotto 6/58', url: 'https://www.pcso.gov.ph/SearchLottoResult.aspx' },
-    { name: 'Grand Lotto 6/55', url: 'https://www.pcso.gov.ph/SearchLottoResult.aspx' },
-    { name: 'Super Lotto 6/49', url: 'https://www.pcso.gov.ph/SearchLottoResult.aspx' },
-    { name: 'Mega Lotto 6/45', url: 'https://www.pcso.gov.ph/SearchLottoResult.aspx' },
-    { name: 'Lotto 6/42', url: 'https://www.pcso.gov.ph/SearchLottoResult.aspx' },
-    // Add 6D, 4D, 3D, 2D if needed
+puppeteer.use(StealthPlugin());
+
+const OUTPUT_DIR = 'data';
+// IMPORTANT: Filename must match what Content Studio expects
+const OUTPUT_FILE = path.join(OUTPUT_DIR, 'partial_winners_history.json'); 
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const TARGETS = [
+    { url: 'https://www.lottopcso.com/6-58-lotto-result/', game: 'Ultra Lotto 6/58' },
+    { url: 'https://www.lottopcso.com/6-55-lotto-result/', game: 'Grand Lotto 6/55' },
+    { url: 'https://www.lottopcso.com/6-49-lotto-result/', game: 'Super Lotto 6/49' },
+    { url: 'https://www.lottopcso.com/6-45-lotto-result/', game: 'Mega Lotto 6/45' },
+    { url: 'https://www.lottopcso.com/6-42-lotto-result/', game: 'Lotto 6/42' }
 ];
 
-// WRAPPER: The code must be inside an async function
 (async () => {
+    console.log("💎 Scraping Partial Winners History (Merge Mode)...");
+
+    if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+
+    // 1. Load Existing Data
+    let currentData = [];
+    if (fs.existsSync(OUTPUT_FILE)) {
+        try { currentData = JSON.parse(fs.readFileSync(OUTPUT_FILE)); } 
+        catch (e) { currentData = []; }
+    }
+    const initialCount = currentData.length;
+    console.log(`💾 Loaded ${initialCount} existing entries.`);
+
     const browser = await puppeteer.launch({ 
-        headless: 'new', 
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+        headless: "new", 
+        executablePath: '/opt/google/chrome/chrome', // Path for GitHub Actions
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
     });
-    
     const page = await browser.newPage();
-    const allData = [];
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+    let newCount = 0;
 
     try {
-        for (const target of GAMES) {
-            console.log(`Scraping ${target.name}...`);
-            
-            // 1. Go to the page
-            await page.goto(target.url, { waitUntil: 'networkidle2' });
-
-            // 2. Select game in dropdown (if PCSO site uses dropdown)
-            // Note: PCSO site often requires selecting the game. 
-            // You might need to adjust this selector based on the actual site structure.
+        for (const target of TARGETS) {
+            process.stdout.write(`🔍 ${target.game}... `);
             try {
-                await page.select('select#cphContainer_ucSearchLotto_ddlGame', target.name); 
-                await page.click('input[type="submit"]');
-                await page.waitForSelector('table.has-fixed-layout', { timeout: 5000 });
-            } catch (e) {
-                console.log(`Could not select game or table not found for ${target.name}`);
-                continue; 
-            }
+                await page.goto(target.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await wait(2000);
 
-            // 3. Evaluate (Your fixed logic)
-            const resultsOnPage = await page.evaluate((gameName) => {
-                const items = [];
-                const tables = document.querySelectorAll('table.has-fixed-layout');
+                const details = await page.evaluate(() => {
+                    const data = {};
+                    const table = document.querySelector('table.has-fixed-layout');
+                    if (!table) return null;
 
-                tables.forEach(table => {
+                    // 1. Get Date
                     const th = table.querySelector('thead th:nth-child(2)');
-                    if (!th) return;
-                    
+                    if (!th) return null;
                     const d = new Date(th.innerText.trim());
-                    if (isNaN(d)) return;
-                    const date = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+                    if (isNaN(d)) return null;
+                    data.date = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 
-                    // ROBUST HELPER
-                    const getValue = (label) => {
+                    // 2. Helpers
+                    const getValue = (labelText) => {
                         const rows = table.querySelectorAll('tbody tr');
                         for (const row of rows) {
-                            const cellText = row.cells[0].innerText.trim().toLowerCase();
-                            const searchLabel = label.toLowerCase();
-                            if (cellText.includes(searchLabel)) {
+                            if (row.cells[0].innerText.trim().includes(labelText)) {
                                 return row.cells[1].innerText.trim();
                             }
                         }
@@ -73,36 +80,60 @@ const GAMES = [
                         return { winners: val.replace(/,/g, ''), prize: 'N/A' };
                     };
 
+                    // 3. Get Data
+                    data.combination = getValue('Winning Combination');
+                    data.jackpot_prize = getValue('Jackpot Prize');
+                    data.jackpot_winners = getValue('Jackpot Winner');
+
                     const p2 = getValue('2nd Prize');
                     const p3 = getValue('3rd Prize');
                     const p4 = getValue('4th Prize');
 
-                    items.push({
-                        game: gameName,
-                        date: date,
-                        combination: getValue('Winning Combination'),
-                        jackpot_prize: getValue('Jackpot Prize'),
-                        jackpot_winners: getValue('Jackpot Winner'),
-                        winners_2nd: parseValue(p2).winners,
-                        prize_2nd: parseValue(p2).prize,
-                        winners_3rd: parseValue(p3).winners,
-                        prize_3rd: parseValue(p3).prize,
-                        winners_4th: parseValue(p4).winners,
-                        prize_4th: parseValue(p4).prize
-                    });
-                });
-                return items;
-            }, target.name);
+                    data.second = parseValue(p2);
+                    data.third = parseValue(p3);
+                    data.fourth = parseValue(p4);
 
-            allData.push(...resultsOnPage);
+                    return data;
+                });
+
+                if (details) {
+                    // 4. MERGE LOGIC
+                    const exists = currentData.some(i => i.date === details.date && i.game === target.game);
+                    
+                    if (!exists) {
+                        currentData.push({
+                            game: target.game,
+                            date: details.date,
+                            combination: details.combination,
+                            jackpot_prize: details.jackpot_prize,
+                            jackpot_winners: details.jackpot_winners,
+                            winners_2nd: details.second.winners,
+                            prize_2nd: details.second.prize,
+                            winners_3rd: details.third.winners,
+                            prize_3rd: details.third.prize,
+                            winners_4th: details.fourth.winners,
+                            prize_4th: details.fourth.prize
+                        });
+                        newCount++;
+                        process.stdout.write(`✅ NEW\n`);
+                    } else {
+                        process.stdout.write(`✔️ Exists\n`);
+                    }
+                } else {
+                    process.stdout.write(`❌ Parse Error\n`);
+                }
+
+            } catch (e) {
+                process.stdout.write(`❌ Error\n`);
+            }
         }
 
-        // 4. Save to file
-        fs.writeFileSync('partial_winners_history.json', JSON.stringify(allData, null, 2));
-        console.log(`✅ Done! Saved ${allData.length} records.`);
+        // 5. Save
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(currentData, null, 2));
+        console.log(`💾 Done! Added ${newCount} new entries.`);
 
     } catch (error) {
-        console.error("Error:", error);
+        console.error("❌ Fatal Error:", error.message);
     } finally {
         await browser.close();
     }
