@@ -16,16 +16,17 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-
       - name: Install Dependencies
         run: |
           sudo apt-get update
+          # FIX: Changed libasound2 to libasound2t64 for Ubuntu 24.04 (Noble)
           sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libatspi2.0-0 libxshmfence1
-          PUPPETEER_SKIP_DOWNLOAD=true npm install
+          
+          # Install Node modules
+          npm install
+          
+          # DOWNLOAD CHROME specifically for Puppeteer
+          npx puppeteer browsers install chrome
 
       - name: Run History Scraper
         run: node scrape_partial_winners_history.js
