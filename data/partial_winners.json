@@ -401,5 +401,31 @@
     "prize_3rd": "N/A",
     "winners_4th": "*",
     "prize_4th": "N/A"
+  },
+  {
+    "game": "Ultra Lotto 6/58",
+    "date": "4/3/2026",
+    "combination": "No draw…",
+    "jackpot_prize": "₱75,000,000.00",
+    "jackpot_winners": "*",
+    "winners_2nd": "*",
+    "prize_2nd": "N/A",
+    "winners_3rd": "*",
+    "prize_3rd": "N/A",
+    "winners_4th": "*",
+    "prize_4th": "N/A"
+  },
+  {
+    "game": "Mega Lotto 6/45",
+    "date": "4/3/2026",
+    "combination": "No draw…",
+    "jackpot_prize": "₱15,000,000.00",
+    "jackpot_winners": "*",
+    "winners_2nd": "*",
+    "prize_2nd": "N/A",
+    "winners_3rd": "*",
+    "prize_3rd": "N/A",
+    "winners_4th": "*",
+    "prize_4th": "N/A"
   }
 ]
